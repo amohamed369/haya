@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Haya needs access to your photo library to detect and filter photos based on your preferences.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Haya uses Face ID to protect hidden photo visibility.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fraunces-VariableFont.ttf</string>
+		<string>DMSans-VariableFont.ttf</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+</dict>
+</plist>

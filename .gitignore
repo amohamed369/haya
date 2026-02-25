@@ -1,0 +1,45 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# CocoaPods
+Pods/
+Podfile.lock
+
+# Models (large binary files — download via scripts)
+models/*.mlpackage/
+models/*.tflite
+models/*.onnx
+yolo11n.pt
+Haya/Resources/*.mlpackage/
+Haya/Resources/*.tflite
+
+# Secrets & credentials
+.env
+*.secret
+*.key
+kaggle.json
+
+# OS
+.DS_Store
+*.swp
+*~
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Intermediate
+=*

@@ -1,0 +1,12 @@
+# Haya model conversion dependencies
+# REQUIRES Python 3.10 or 3.11 (coremltools does NOT support 3.12+)
+# Setup: uv venv --python 3.11 && source .venv/bin/activate && uv pip install -r requirements.txt
+
+coremltools>=8.0
+numpy<2
+ultralytics
+torch
+torchvision
+onnx
+torchreid @ git+https://github.com/KaiyangZhou/deep-person-reid.git
+huggingface_hub
