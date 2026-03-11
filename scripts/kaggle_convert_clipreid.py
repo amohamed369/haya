@@ -88,7 +88,7 @@ cfg.INPUT.SIZE_TEST = [INPUT_H, INPUT_W]
 model = make_model(cfg, num_class=1041, camera_num=15, view_num=1)  # MSMT17 has 1041 identities
 checkpoint = torch.load(str(CHECKPOINT_PATH), map_location="cpu")
 model.load_state_dict(checkpoint, strict=False)
-model.float()
+model.cpu().float()
 model.train(False)
 
 class CLIPReIDImageEncoder(nn.Module):
