@@ -162,22 +162,55 @@ actor PersonIdentifier {
 
     // MARK: - Enrollment
 
-    func enroll(name: String, images: [CIImage]) async throws -> PersonEnrollment {
+    /// Enroll a person with optional per-image face selections.
+    /// - Parameters:
+    ///   - faceSelections: Normalized face rects (Vision bottom-left origin) per image.
+    ///     nil array = auto-pick first face. nil element = auto-pick for that image.
+    func enroll(name: String, images: [CIImage], faceSelections: [CGRect?]? = nil) async throws -> PersonEnrollment {
         var faceEmbeddings: [[Float]] = []
         var bodyEmbeddings: [[Float]] = []
 
-        for image in images {
+        for (i, image) in images.enumerated() {
             let handler = VNImageRequestHandler(ciImage: image, options: [:])
             let faceRequest = VNDetectFaceLandmarksRequest()
             try handler.perform([faceRequest])
 
-            if let face = faceRequest.results?.first,
+            let selectedRect: CGRect? = {
+                guard let selections = faceSelections, i < selections.count else { return nil }
+                return selections[i]
+            }()
+
+            // Pick the correct face observation
+            let face: VNFaceObservation? = {
+                guard let results = faceRequest.results, !results.isEmpty else { return nil }
+                if let sel = selectedRect {
+                    // Find the face observation closest to the selected rect
+                    return results.min(by: { a, b in
+                        rectDistance(a.boundingBox, sel) < rectDistance(b.boundingBox, sel)
+                    })
+                }
+                return results.first
+            }()
+
+            if let face,
                let aligned = FaceAligner.alignFace(from: image, face: face),
                let emb = try extractFaceEmbedding(alignedFace: aligned) {
                 faceEmbeddings.append(emb)
             }
 
-            if let emb = try extractBodyEmbedding(bodyCrop: image) {
+            // Body crop: use face-anchored estimate if we have a face, else full image
+            let bodyCrop: CIImage
+            if let face {
+                let faceBox = VisionCoordinates.flipToTopLeft(face.boundingBox)
+                let personBox = PersonDetector.estimatePersonBox(faceBox: faceBox)
+                let imageSize = image.extent.size
+                let cropRect = VisionCoordinates.toCIImageRect(personBox, imageSize: imageSize)
+                bodyCrop = image.cropped(to: cropRect)
+            } else {
+                bodyCrop = image
+            }
+
+            if let emb = try extractBodyEmbedding(bodyCrop: bodyCrop) {
                 bodyEmbeddings.append(emb)
             }
         }
@@ -193,7 +226,15 @@ actor PersonIdentifier {
 
         enrollments.append(enrollment)
         try Self.saveEnrollments(enrollments)
+        await LogStore.shared.log(.info, "Identifier", "Enrolled '\(name)' — \(faceEmbeddings.count) face, \(bodyEmbeddings.count) body embeddings")
         return enrollment
+    }
+
+    /// Distance between two rects (center-to-center).
+    private func rectDistance(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let dx = a.midX - b.midX
+        let dy = a.midY - b.midY
+        return dx * dx + dy * dy
     }
 
     func removeEnrollment(id: String) throws {

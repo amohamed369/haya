@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import CoreImage
+import Vision
 
 /// Onboarding step: enroll one or more people with name + photos.
 struct PersonSetupView: View {
@@ -149,6 +150,13 @@ struct AddPersonSheet: View {
     @State private var isProcessing = false
     @State private var errorMessage: String?
 
+    // Face disambiguation
+    @State private var faceCounts: [Int] = []           // face count per photo
+    @State private var faceSelections: [CGRect?] = []   // selected face rect per photo (nil = auto)
+    @State private var pendingFacePicks: [Int] = []     // indices of photos needing face selection
+    @State private var currentFacePickIndex: Int?       // which photo is showing face picker
+    @State private var isDetectingFaces = false
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -222,18 +230,36 @@ struct AddPersonSheet: View {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: 8) {
                                         ForEach(0..<selectedImages.count, id: \.self) { idx in
-                                            Image(uiImage: selectedImages[idx])
-                                                .resizable()
-                                                .scaledToFill()
-                                                .frame(width: 72, height: 72)
-                                                .clipShape(RoundedRectangle(cornerRadius: Haya.Radius.sm))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: Haya.Radius.sm)
-                                                        .strokeBorder(Haya.Colors.glassBorder, lineWidth: 1)
-                                                )
+                                            photoThumbnail(idx)
                                         }
                                     }
                                 }
+                            }
+
+                            if isDetectingFaces {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .tint(Haya.Colors.accentOrange)
+                                        .controlSize(.small)
+                                    Text("Detecting faces...")
+                                        .font(HayaFont.caption)
+                                        .foregroundStyle(Haya.Colors.textSageDim)
+                                }
+                            }
+
+                            if !pendingFacePicks.isEmpty && !isDetectingFaces {
+                                Button {
+                                    currentFacePickIndex = pendingFacePicks.first
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "person.crop.circle.badge.questionmark")
+                                            .foregroundStyle(Haya.Colors.accentOrange)
+                                        Text("\(pendingFacePicks.count) photo(s) need face selection")
+                                            .font(HayaFont.caption)
+                                            .foregroundStyle(Haya.Colors.accentOrange)
+                                    }
+                                }
+                                .buttonStyle(.plain)
                             }
 
                             if selectedImages.count > 0 && selectedImages.count < 3 {
@@ -283,15 +309,79 @@ struct AddPersonSheet: View {
                     }
                     .foregroundStyle(Haya.Colors.accentOrange)
                     .fontWeight(.semibold)
-                    .disabled(name.isEmpty || selectedImages.count < 3 || isProcessing)
+                    .disabled(name.isEmpty || selectedImages.count < 3 || isProcessing || !pendingFacePicks.isEmpty || isDetectingFaces)
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
             .onChange(of: selectedItems) { _, newItems in
                 Task { await loadImages(from: newItems) }
             }
+            .fullScreenCover(isPresented: Binding(
+                get: { currentFacePickIndex != nil },
+                set: { if !$0 { currentFacePickIndex = nil } }
+            )) {
+                if let idx = currentFacePickIndex, idx < selectedImages.count {
+                    FacePickerOverlay(
+                        image: selectedImages[idx],
+                        personName: name.isEmpty ? "this person" : name,
+                        onFaceSelected: { rect in
+                            faceSelections[idx] = rect
+                            pendingFacePicks.removeAll { $0 == idx }
+                            // Auto-advance to next pending photo
+                            if let next = pendingFacePicks.first {
+                                currentFacePickIndex = next
+                            } else {
+                                currentFacePickIndex = nil
+                            }
+                        },
+                        onCancel: {
+                            currentFacePickIndex = nil
+                        }
+                    )
+                }
+            }
         }
     }
+
+    // MARK: - Photo Thumbnail
+
+    private func photoThumbnail(_ idx: Int) -> some View {
+        let needsPick = pendingFacePicks.contains(idx)
+        let hasPick = faceSelections.indices.contains(idx) && faceSelections[idx] != nil
+        let faceCount = faceCounts.indices.contains(idx) ? faceCounts[idx] : 0
+
+        return Image(uiImage: selectedImages[idx])
+            .resizable()
+            .scaledToFill()
+            .frame(width: 72, height: 72)
+            .clipShape(RoundedRectangle(cornerRadius: Haya.Radius.sm))
+            .overlay(
+                RoundedRectangle(cornerRadius: Haya.Radius.sm)
+                    .strokeBorder(
+                        needsPick ? Haya.Colors.accentOrange :
+                        hasPick ? Haya.Colors.accentGreen :
+                        Haya.Colors.glassBorder,
+                        lineWidth: needsPick || hasPick ? 2 : 1
+                    )
+            )
+            .overlay(alignment: .bottomTrailing) {
+                if faceCount > 1 {
+                    Image(systemName: hasPick ? "checkmark.circle.fill" : "person.2.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(hasPick ? Haya.Colors.accentGreen : Haya.Colors.accentOrange)
+                        .padding(4)
+                        .background(Circle().fill(Haya.Colors.bgDeep))
+                        .offset(x: 4, y: 4)
+                }
+            }
+            .onTapGesture {
+                if faceCount > 1 {
+                    currentFacePickIndex = idx
+                }
+            }
+    }
+
+    // MARK: - Image Loading + Face Detection
 
     private func loadImages(from items: [PhotosPickerItem]) async {
         var images: [UIImage] = []
@@ -302,7 +392,37 @@ struct AddPersonSheet: View {
             }
         }
         selectedImages = images
+        faceSelections = Array(repeating: nil, count: images.count)
+        faceCounts = Array(repeating: 0, count: images.count)
+        pendingFacePicks = []
+
+        // Run face detection on all photos
+        isDetectingFaces = true
+        defer { isDetectingFaces = false }
+
+        for (i, image) in images.enumerated() {
+            guard let cgImage = image.cgImage else { continue }
+            let request = VNDetectFaceRectanglesRequest()
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            do {
+                try handler.perform([request])
+                let count = request.results?.count ?? 0
+                faceCounts[i] = count
+                if count > 1 {
+                    pendingFacePicks.append(i)
+                }
+            } catch {
+                faceCounts[i] = 0
+            }
+        }
+
+        // Auto-show face picker if any multi-face photos
+        if let first = pendingFacePicks.first, !name.isEmpty {
+            currentFacePickIndex = first
+        }
     }
+
+    // MARK: - Enrollment
 
     private func enroll() async {
         isProcessing = true
@@ -315,7 +435,11 @@ struct AddPersonSheet: View {
         }
 
         do {
-            let enrollment = try await pipeline.identifier.enroll(name: name, images: ciImages)
+            let enrollment = try await pipeline.identifier.enroll(
+                name: name,
+                images: ciImages,
+                faceSelections: faceSelections
+            )
             onEnrolled(enrollment.name, selectedImages.count)
             try? await Task.sleep(for: .seconds(0.5))
             dismiss()
@@ -324,3 +448,4 @@ struct AddPersonSheet: View {
         }
     }
 }
+
