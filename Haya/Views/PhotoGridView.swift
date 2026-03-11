@@ -192,7 +192,7 @@ struct PhotoThumbnailView: View {
 
     private func loadThumbnail() async {
         let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
+        options.deliveryMode = .highQualityFormat // Must be single-callback; .opportunistic calls twice → crashes continuation
         options.isNetworkAccessAllowed = true
 
         let size = CGSize(width: 200, height: 200)

@@ -18,13 +18,12 @@ build/
 Pods/
 Podfile.lock
 
-# Models (large binary files — download via scripts)
+# Models (research/scripts — not bundled)
 models/*.mlpackage/
 models/*.tflite
 models/*.onnx
 yolo11n.pt
-Haya/Resources/*.mlpackage/
-Haya/Resources/*.tflite
+# Note: Haya/Resources/ models ARE tracked (needed in IPA bundle)
 
 # Secrets & credentials
 .env
