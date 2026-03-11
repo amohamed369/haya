@@ -23,7 +23,7 @@ struct PersonFilterResult: Identifiable {
     let decisionReason: String
 }
 
-enum FilterDecision {
+enum FilterDecision: Equatable {
     case keep           // Show the photo
     case hide           // Hide the photo
     case unknown        // Could not determine (no enrolled person matched)

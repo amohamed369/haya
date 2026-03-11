@@ -74,12 +74,9 @@ struct FacePickerOverlay: View {
         let imageAspect = imageSize.width / imageSize.height
         let viewAspect = viewSize.width / viewSize.height
 
-        let displaySize: CGSize
-        if imageAspect > viewAspect {
-            displaySize = CGSize(width: viewSize.width, height: viewSize.width / imageAspect)
-        } else {
-            displaySize = CGSize(width: viewSize.height * imageAspect, height: viewSize.height)
-        }
+        let displaySize: CGSize = imageAspect > viewAspect
+            ? CGSize(width: viewSize.width, height: viewSize.width / imageAspect)
+            : CGSize(width: viewSize.height * imageAspect, height: viewSize.height)
 
         let offsetX = (viewSize.width - displaySize.width) / 2
         let offsetY = (viewSize.height - displaySize.height) / 2

@@ -204,7 +204,7 @@ actor PersonIdentifier {
             kCVPixelFormatType_32BGRA, attrs as CFDictionary, &pixelBuffer
         )
         guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
-            throw MLError(.generic, userInfo: [NSLocalizedDescriptionKey: "Failed to create pixel buffer"])
+            throw NSError(domain: "com.haya.ml", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create pixel buffer"])
         }
 
         CVPixelBufferLockBaseAddress(buffer, [])
@@ -263,6 +263,6 @@ actor PersonIdentifier {
     private static func modelURL(name: String) throws -> URL {
         if let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc") { return url }
         if let url = Bundle.main.url(forResource: name, withExtension: "mlpackage") { return url }
-        throw MLError(.generic, userInfo: [NSLocalizedDescriptionKey: "Model \(name) not found in bundle"])
+        throw NSError(domain: "com.haya.ml", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model \(name) not found in bundle"])
     }
 }

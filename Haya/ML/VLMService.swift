@@ -19,7 +19,7 @@ struct ModestyAssessment {
 /// Creates a fresh ChatSession per assessment to avoid context contamination.
 @MainActor
 class VLMService {
-    private var modelContainer: (any LMModel)?
+    private var modelContainer: ModelContainer?
     private let ciContext = CIContext()
     private var _isLoading = false
 
@@ -59,8 +59,8 @@ class VLMService {
         // "If you need a one-shot prompt/response simply create a ChatSession, evaluate the prompt and discard."
         let session = ChatSession(
             container,
-            processing: UserInput.Processing(resize: CGSize(width: 384, height: 384)),
-            generateParameters: GenerateParameters(maxTokens: 60)
+            generateParameters: GenerateParameters(maxTokens: 60),
+            processing: UserInput.Processing(resize: CGSize(width: 384, height: 384))
         )
 
         let tempURL = try saveToTempFile(personCrop)
@@ -70,7 +70,7 @@ class VLMService {
 
         let responseText = try await session.respond(
             to: prompt,
-            image: .url(tempURL)
+            image: UserInput.Image.url(tempURL)
         )
 
         return parseModestyResponse(responseText)

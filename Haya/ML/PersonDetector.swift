@@ -231,6 +231,6 @@ actor PersonDetector {
     private static func modelURL(name: String) throws -> URL {
         if let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc") { return url }
         if let url = Bundle.main.url(forResource: name, withExtension: "mlpackage") { return url }
-        throw MLError(.generic, userInfo: [NSLocalizedDescriptionKey: "Model \(name) not found in bundle"])
+        throw NSError(domain: "com.haya.ml", code: -1, userInfo: [NSLocalizedDescriptionKey: "Model \(name) not found in bundle"])
     }
 }
