@@ -69,20 +69,20 @@ INPUT_H, INPUT_W = 256, 128
 from model.make_model import make_model
 from config import cfg
 
-# Set config values directly (avoids yacs type-mismatch with yml DATASETS key)
+# Pre-register DATASETS as CfgNode (yml has it nested but default cfg has None)
+from yacs.config import CfgNode as CN
+cfg.defrost()
+if cfg.DATASETS is None:
+    cfg.DATASETS = CN()
+    cfg.DATASETS.NAMES = ""
+    cfg.DATASETS.ROOT_DIR = ""
+
+cfg.merge_from_file(str(CLIPREID_DIR / "configs" / "person" / "vit_clipreid.yml"))
 cfg.MODEL.PRETRAIN_CHOICE = "self"
 cfg.TEST.WEIGHT = ""
 cfg.MODEL.STRIDE_SIZE = [16, 16]
 cfg.INPUT.SIZE_TRAIN = [INPUT_H, INPUT_W]
 cfg.INPUT.SIZE_TEST = [INPUT_H, INPUT_W]
-cfg.MODEL.TRANSFORMER_TYPE = "vit_base_patch16_224_TransReID"
-cfg.MODEL.NAME = "transformer"
-cfg.MODEL.JPM = True
-cfg.MODEL.RE_ARRANGE = True
-cfg.MODEL.SIE_CAMERA = True
-cfg.MODEL.SIE_VIEW = False
-cfg.MODEL.SIE_COE = 3.0
-cfg.MODEL.ID_LOSS_TYPE = "softmax"
 
 model = make_model(cfg, num_class=4101, camera_num=15, view_num=1)
 checkpoint = torch.load(str(CHECKPOINT_PATH), map_location="cpu")
