@@ -22,7 +22,8 @@ print("=" * 60)
 print("STEP 1: Installing dependencies...")
 print("=" * 60)
 subprocess.check_call([sys.executable, "-m", "pip", "install", "-q",
-                       "coremltools>=8.0", "gdown", "yacs", "timm==0.9.16"])
+                       "coremltools>=8.0", "gdown", "yacs", "timm==0.9.16",
+                       "ftfy", "regex"])
 
 import os, sys, shutil, math
 from pathlib import Path
