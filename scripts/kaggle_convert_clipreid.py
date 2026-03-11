@@ -69,18 +69,19 @@ INPUT_H, INPUT_W = 256, 128
 from model.make_model import make_model
 from config import cfg
 
-# Pre-register DATASETS as CfgNode (yml has it nested but default cfg has None)
-from yacs.config import CfgNode as CN
-cfg.defrost()
-if cfg.DATASETS is None:
-    cfg.DATASETS = CN()
-    cfg.DATASETS.NAMES = ""
-    cfg.DATASETS.ROOT_DIR = ""
-
-cfg.merge_from_file(str(CLIPREID_DIR / "configs" / "person" / "vit_clipreid.yml"))
-cfg.MODEL.PRETRAIN_CHOICE = "self"
-cfg.TEST.WEIGHT = ""
+# Skip yml merge entirely — it has DATASETS: with all sub-keys commented out,
+# which YAML parses as null, causing yacs type mismatch. Set only the keys
+# that build_transformer.__init__ actually reads.
+cfg.MODEL.NAME = "ViT-B-16"
 cfg.MODEL.STRIDE_SIZE = [16, 16]
+cfg.MODEL.PRETRAIN_CHOICE = "self"
+cfg.MODEL.SIE_CAMERA = True
+cfg.MODEL.SIE_VIEW = False
+cfg.MODEL.SIE_COE = 3.0
+cfg.MODEL.COS_LAYER = False
+cfg.MODEL.NECK = "bnneck"
+cfg.TEST.NECK_FEAT = "before"
+cfg.TEST.WEIGHT = ""
 cfg.INPUT.SIZE_TRAIN = [INPUT_H, INPUT_W]
 cfg.INPUT.SIZE_TEST = [INPUT_H, INPUT_W]
 
