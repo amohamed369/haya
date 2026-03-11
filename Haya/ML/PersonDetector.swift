@@ -55,9 +55,16 @@ actor PersonDetector {
     func loadModels() async throws {
         let config = MLModelConfiguration()
         config.computeUnits = .all
-        let url = try Self.modelURL(name: "YOLO11n")
-        let yolo = try MLModel(contentsOf: url, configuration: config)
-        yoloModel = try VNCoreMLModel(for: yolo)
+        do {
+            let url = try Self.modelURL(name: "YOLO11n")
+            let yolo = try MLModel(contentsOf: url, configuration: config)
+            yoloModel = try VNCoreMLModel(for: yolo)
+            await LogStore.shared.log(.info, "Detector", "YOLO11n loaded")
+        } catch {
+            await LogStore.shared.log(.error, "Detector", "YOLO11n failed: \(error.localizedDescription)")
+            logger.error("YOLO11n failed: \(error)")
+            // Don't rethrow — face-only detection still works without YOLO
+        }
     }
 
     /// Generate a pixel-perfect masked crop for a detected person (iOS 17+).

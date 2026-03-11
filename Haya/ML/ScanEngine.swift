@@ -32,6 +32,7 @@ actor ScanEngine {
         isRunning = true
 
         logger.info("Starting scan with batch size \(batchSize)")
+        await LogStore.shared.log(.info, "Scan", "Starting scan — batch size \(batchSize)")
 
         // Fetch all image assets, most recent first
         let fetchOptions = PHFetchOptions()
@@ -66,6 +67,7 @@ actor ScanEngine {
 
                 // Load image
                 guard let ciImage = await loadImage(asset) else {
+                    await LogStore.shared.log(.warning, "Scan", "Failed to load image: \(asset.localIdentifier.prefix(8))...")
                     errors += 1
                     processed += 1
                     emitProgress(ScanProgress(total: total, processed: processed, hidden: hidden, kept: kept, errors: errors, isScanning: true))
@@ -96,6 +98,7 @@ actor ScanEngine {
         isRunning = false
         emitProgress(ScanProgress(total: total, processed: processed, hidden: hidden, kept: kept, errors: errors, isScanning: false))
         logger.info("Scan complete: \(processed)/\(total) processed, \(hidden) hidden, \(errors) errors")
+        await LogStore.shared.log(.info, "Scan", "Complete: \(processed)/\(total) processed, \(hidden) hidden, \(errors) errors")
     }
 
     /// Stop an active scan.

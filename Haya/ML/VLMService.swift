@@ -34,10 +34,13 @@ class VLMService {
         _isLoading = true
         defer { _isLoading = false }
 
+        LogStore.shared.log(.info, "VLM", "Loading \(modelID)...")
+
         MLX.GPU.set(cacheLimit: 512 * 1024 * 1024)
 
         let loaded = try await MLXLMCommon.loadModel(id: modelID)
         self.modelContext = loaded
+        LogStore.shared.log(.info, "VLM", "Model loaded successfully")
     }
 
     /// Assess whether a person in the image is modestly dressed.

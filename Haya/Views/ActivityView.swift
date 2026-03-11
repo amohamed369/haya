@@ -1,10 +1,13 @@
 import SwiftUI
 
-/// Activity tab: scan progress, model status, processing stats.
+/// Activity tab: scan progress, model status, pipeline stages, and live log feed.
 struct ActivityView: View {
     @EnvironmentObject var pipeline: Pipeline
+    @ObservedObject var logStore = LogStore.shared
 
     @State private var animateArc = false
+    @State private var logFilter: LogStore.Level? = nil
+    @State private var copiedToast = false
 
     var body: some View {
         ScrollView {
@@ -38,7 +41,25 @@ struct ActivityView: View {
                 testSection
                     .padding(.horizontal, Haya.Spacing.lg)
 
+                // Live Log
+                liveLogCard
+                    .padding(.horizontal, Haya.Spacing.lg)
+
                 Spacer().frame(height: 100)
+            }
+        }
+        .overlay(alignment: .top) {
+            if copiedToast {
+                Text("Logs copied to clipboard")
+                    .font(HayaFont.caption)
+                    .foregroundStyle(Haya.Colors.textCream)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(Haya.Colors.bgDeep))
+                    .overlay(Capsule().strokeBorder(Haya.Colors.glassBorder, lineWidth: 1))
+                    .shadow(color: Haya.Shadows.soft, radius: 8, y: 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .padding(.top, Haya.Spacing.md)
             }
         }
         .onAppear {
@@ -65,7 +86,6 @@ struct ActivityView: View {
 
             // Arc visualization
             ZStack {
-                // Track
                 ArcShape()
                     .stroke(
                         Haya.Colors.glassBg,
@@ -73,16 +93,14 @@ struct ActivityView: View {
                     )
                     .frame(width: 180, height: 100)
 
-                // Fill
                 ArcShape()
-                    .trim(from: 0, to: animateArc ? 0.0 : 0.0) // 0% — no photos scanned yet
+                    .trim(from: 0, to: animateArc ? 0.0 : 0.0)
                     .stroke(
                         Haya.Gradients.orangeCTA,
                         style: StrokeStyle(lineWidth: 14, lineCap: .round)
                     )
                     .frame(width: 180, height: 100)
 
-                // Center text
                 VStack(spacing: 2) {
                     Text("0")
                         .font(HayaFont.heading(36, weight: .bold))
@@ -96,7 +114,6 @@ struct ActivityView: View {
             }
             .frame(height: 120)
 
-            // Mini stats
             HStack(spacing: Haya.Spacing.sm) {
                 miniStat(value: "0", label: "Hidden", icon: "eye.slash", color: Haya.Colors.accentOrange)
                 miniStat(value: "0", label: "Kept", icon: "checkmark.circle", color: Haya.Colors.accentTeal)
@@ -192,7 +209,11 @@ struct ActivityView: View {
                 stageRow(icon: "person.crop.rectangle", label: "Person Detection", detail: "Vision + YOLO11n", color: Haya.Colors.accentTeal)
                 stageRow(icon: "person.crop.circle", label: "Person Identification", detail: "ArcFace + CLIP-ReID", color: Haya.Colors.accentLavender)
                 stageRow(icon: "scissors", label: "Hair Segmentation", detail: "MediaPipe pre-filter", color: Haya.Colors.accentYellow)
-                stageRow(icon: "brain", label: "Modesty Assessment", detail: "SmolVLM2", color: Haya.Colors.accentOrange)
+                stageRow(
+                    icon: "brain", label: "Modesty Assessment",
+                    detail: pipeline.vlmService.currentModelID.components(separatedBy: "/").last ?? "VLM",
+                    color: Haya.Colors.accentOrange
+                )
             }
         }
         .glassCard()
@@ -252,6 +273,160 @@ struct ActivityView: View {
         }
         .buttonStyle(.plain)
         .disabled(!pipeline.isReady)
+    }
+
+    // MARK: - Live Log
+
+    private var filteredEntries: [LogStore.LogEntry] {
+        guard let filter = logFilter else { return logStore.entries }
+        return logStore.entries.filter { $0.level == filter }
+    }
+
+    private var liveLogCard: some View {
+        VStack(alignment: .leading, spacing: Haya.Spacing.md) {
+            // Header row
+            HStack {
+                Text("Live Log")
+                    .font(HayaFont.title3)
+                    .foregroundStyle(Haya.Colors.textCream)
+
+                Spacer()
+
+                Button {
+                    UIPasteboard.general.string = logStore.formatted()
+                    withAnimation(.spring(response: 0.3)) { copiedToast = true }
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        withAnimation { copiedToast = false }
+                    }
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Haya.Colors.textSageDim)
+                }
+
+                Button {
+                    logStore.clear()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Haya.Colors.textSageDim)
+                }
+            }
+
+            // Filter pills
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Haya.Spacing.sm) {
+                    filterPill("All", level: nil)
+                    filterPill("Errors", level: .error)
+                    filterPill("Warnings", level: .warning)
+                    filterPill("Info", level: .info)
+                }
+            }
+
+            // Log entries
+            if filteredEntries.isEmpty {
+                HStack {
+                    Spacer()
+                    Text("No log entries yet")
+                        .font(HayaFont.caption)
+                        .foregroundStyle(Haya.Colors.textSageDim)
+                    Spacer()
+                }
+                .padding(.vertical, Haya.Spacing.lg)
+            } else {
+                ScrollViewReader { proxy in
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(filteredEntries) { entry in
+                            logRow(entry)
+                                .id(entry.id)
+                        }
+                    }
+                    .onChange(of: logStore.entries.count) { _, _ in
+                        if let last = filteredEntries.last {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 300)
+            }
+        }
+        .glassCard()
+    }
+
+    private func filterPill(_ label: String, level: LogStore.Level?) -> some View {
+        let isActive = logFilter == level
+        return Button {
+            withAnimation(.spring(response: 0.3)) { logFilter = level }
+        } label: {
+            Text(label)
+                .font(HayaFont.caption)
+                .foregroundStyle(isActive ? Color(hex: "3F4F32") : Haya.Colors.textSage)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule().fill(isActive ? Haya.Colors.accentOrange : Haya.Colors.glassBg)
+                )
+                .overlay(
+                    Capsule().strokeBorder(
+                        isActive ? Color.clear : Haya.Colors.glassBorder,
+                        lineWidth: 1
+                    )
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private static let logTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+
+    private func logColor(for level: LogStore.Level) -> Color {
+        switch level {
+        case .error: return Haya.Colors.accentRose
+        case .warning: return Haya.Colors.accentYellow
+        case .info: return Haya.Colors.textCream
+        case .debug: return Haya.Colors.textSageDim
+        }
+    }
+
+    private func logRow(_ entry: LogStore.LogEntry) -> some View {
+        let color = logColor(for: entry.level)
+
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: entry.level.symbol)
+                .font(.system(size: 10))
+                .foregroundStyle(color)
+                .frame(width: 14)
+                .padding(.top, 3)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(Self.logTimeFormatter.string(from: entry.timestamp))
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Haya.Colors.textSageDim)
+                    Text(entry.category)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(color.opacity(0.7))
+                }
+                Text(entry.message)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(color)
+                    .lineLimit(3)
+            }
+        }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(entry.level == .error ? Haya.Colors.accentRose.opacity(0.08) :
+                        entry.level == .warning ? Haya.Colors.accentYellow.opacity(0.06) :
+                        Color.clear)
+        )
     }
 }
 

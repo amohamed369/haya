@@ -40,10 +40,29 @@ actor PersonIdentifier {
         let config = MLModelConfiguration()
         config.computeUnits = .all
 
-        arcFaceModel = try MLModel(contentsOf: Self.modelURL(name: "ArcFace"), configuration: config)
-        clipreidModel = try MLModel(contentsOf: Self.modelURL(name: "CLIPReID"), configuration: config)
+        // Load each model independently — one failure shouldn't block the other
+        do {
+            arcFaceModel = try MLModel(contentsOf: Self.modelURL(name: "ArcFace"), configuration: config)
+            await LogStore.shared.log(.info, "Identifier", "ArcFace loaded")
+        } catch {
+            await LogStore.shared.log(.error, "Identifier", "ArcFace failed: \(error.localizedDescription)")
+            logger.error("ArcFace failed: \(error)")
+        }
+
+        do {
+            clipreidModel = try MLModel(contentsOf: Self.modelURL(name: "CLIPReID"), configuration: config)
+            await LogStore.shared.log(.info, "Identifier", "CLIPReID loaded")
+        } catch {
+            await LogStore.shared.log(.error, "Identifier", "CLIPReID failed: \(error.localizedDescription)")
+            logger.error("CLIPReID failed: \(error)")
+        }
+
+        if arcFaceModel == nil && clipreidModel == nil {
+            throw NSError(domain: "com.haya.ml", code: -1, userInfo: [NSLocalizedDescriptionKey: "No identification models loaded"])
+        }
 
         enrollments = Self.loadEnrollments()
+        await LogStore.shared.log(.info, "Identifier", "Loaded \(enrollments.count) enrollment(s)")
     }
 
     // MARK: - Embedding Extraction
