@@ -173,8 +173,8 @@ struct ActivityView: View {
                 )
             }
 
-            if pipeline.vlmLoadingProgress > 0 && pipeline.vlmLoadingProgress < 1 {
-                ProgressView(value: pipeline.vlmLoadingProgress)
+            if case .downloading(let progress) = pipeline.vlmService.downloadState {
+                ProgressView(value: progress)
                     .tint(Haya.Colors.accentOrange)
             }
         }

@@ -50,7 +50,6 @@ class Pipeline: ObservableObject {
     @Published var isEnrollReady = false
     @Published var isProcessing = false
     @Published var loadingStatus = "Not loaded"
-    @Published var vlmLoadingProgress: Double = 0
 
     /// Load all models. Call once at app startup.
     /// Each model loads independently — one failure doesn't block the others.

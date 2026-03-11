@@ -32,6 +32,10 @@ struct SettingsView: View {
                 processingSection
                     .padding(.horizontal, Haya.Spacing.lg)
 
+                // VLM Model
+                vlmModelSection
+                    .padding(.horizontal, Haya.Spacing.lg)
+
                 // Debug
                 debugSection
                     .padding(.horizontal, Haya.Spacing.lg)
@@ -127,6 +131,15 @@ struct SettingsView: View {
         .glassCard()
     }
 
+    private var vlmStatusText: String {
+        switch pipeline.vlmService.downloadState {
+        case .notDownloaded: return "Not downloaded"
+        case .downloading(let p): return "Downloading \(Int(p * 100))%"
+        case .ready: return "Ready"
+        case .error: return "Error"
+        }
+    }
+
     private var sensitivityLabel: String {
         switch appState.globalSensitivity {
         case 0..<0.3: return "Lenient"
@@ -195,6 +208,178 @@ struct SettingsView: View {
         .glassCard()
     }
 
+    // MARK: - VLM Model
+
+    private var vlmModelSection: some View {
+        VStack(alignment: .leading, spacing: Haya.Spacing.md) {
+            SectionHeader(title: "AI Model")
+
+            switch pipeline.vlmService.downloadState {
+            case .notDownloaded:
+                // Model info + download button
+                VStack(alignment: .leading, spacing: Haya.Spacing.sm) {
+                    HStack(spacing: Haya.Spacing.md) {
+                        Image(systemName: "brain")
+                            .font(.system(size: 20))
+                            .foregroundStyle(Haya.Colors.accentOrange)
+                            .frame(width: 40, height: 40)
+                            .background(
+                                RoundedRectangle(cornerRadius: Haya.Radius.sm)
+                                    .fill(Haya.Colors.accentOrange.opacity(0.12))
+                            )
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(pipeline.vlmService.currentModelID.components(separatedBy: "/").last ?? "VLM")
+                                .font(HayaFont.headline)
+                                .foregroundStyle(Haya.Colors.textCream)
+                            Text("Required for automatic photo filtering")
+                                .font(HayaFont.caption)
+                                .foregroundStyle(Haya.Colors.textSageDim)
+                        }
+                    }
+
+                    HStack(spacing: Haya.Spacing.lg) {
+                        Label(VLMService.formattedModelSize, systemImage: "arrow.down.circle")
+                            .font(HayaFont.caption)
+                            .foregroundStyle(Haya.Colors.textSage)
+                        Label(VLMService.availableDiskSpace + " free", systemImage: "internaldrive")
+                            .font(HayaFont.caption)
+                            .foregroundStyle(Haya.Colors.textSageDim)
+                    }
+
+                    Button {
+                        Task { await pipeline.vlmService.downloadAndLoad() }
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.down.circle.fill")
+                            Text("Download Model")
+                        }
+                        .font(HayaFont.pill)
+                        .foregroundStyle(Haya.Colors.fgOnOrange)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            Capsule().fill(Haya.Gradients.orangeCTA)
+                        )
+                        .overlay(
+                            Capsule().strokeBorder(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
+                                    startPoint: .top, endPoint: .bottom
+                                ),
+                                lineWidth: 1
+                            )
+                        )
+                        .compositingGroup()
+                        .hayaShadowSm()
+                    }
+                    .buttonStyle(.plain)
+
+                    HStack(spacing: Haya.Spacing.xs) {
+                        Image(systemName: "wifi")
+                            .font(.system(size: 10))
+                        Text("Wi-Fi recommended")
+                            .font(HayaFont.caption2)
+                    }
+                    .foregroundStyle(Haya.Colors.textSageDim)
+                }
+
+            case .downloading(let progress):
+                // Progress UI
+                VStack(alignment: .leading, spacing: Haya.Spacing.sm) {
+                    HStack {
+                        Text("Downloading model...")
+                            .font(HayaFont.headline)
+                            .foregroundStyle(Haya.Colors.textCream)
+                        Spacer()
+                        Text("\(Int(progress * 100))%")
+                            .font(HayaFont.caption)
+                            .foregroundStyle(Haya.Colors.accentOrange)
+                            .monospacedDigit()
+                    }
+
+                    ProgressView(value: progress)
+                        .tint(Haya.Colors.accentOrange)
+
+                    let downloadedBytes = Int64(progress * Double(VLMService.estimatedModelSizeBytes))
+                    Text("\(ByteCountFormatter.string(fromByteCount: downloadedBytes, countStyle: .file)) / \(VLMService.formattedModelSize)")
+                        .font(HayaFont.caption2)
+                        .foregroundStyle(Haya.Colors.textSageDim)
+                        .monospacedDigit()
+                }
+
+            case .ready:
+                // Model loaded
+                HStack(spacing: Haya.Spacing.md) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(Haya.Colors.accentGreen)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Model Ready")
+                            .font(HayaFont.headline)
+                            .foregroundStyle(Haya.Colors.textCream)
+                        Text(pipeline.vlmService.currentModelID.components(separatedBy: "/").last ?? "")
+                            .font(HayaFont.caption)
+                            .foregroundStyle(Haya.Colors.textSageDim)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        pipeline.releaseVLM()
+                    } label: {
+                        Text("Unload")
+                            .font(HayaFont.caption)
+                            .foregroundStyle(Haya.Colors.textSageDim)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule().strokeBorder(Haya.Colors.glassBorder, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+            case .error(let message):
+                // Error state with retry
+                VStack(alignment: .leading, spacing: Haya.Spacing.sm) {
+                    HStack(spacing: Haya.Spacing.sm) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Haya.Colors.accentRose)
+                        Text("Download Failed")
+                            .font(HayaFont.headline)
+                            .foregroundStyle(Haya.Colors.textCream)
+                    }
+
+                    Text(message)
+                        .font(HayaFont.caption)
+                        .foregroundStyle(Haya.Colors.textSageDim)
+                        .lineLimit(3)
+
+                    Button {
+                        Task { await pipeline.vlmService.downloadAndLoad() }
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Retry")
+                        }
+                        .font(HayaFont.pill)
+                        .foregroundStyle(Haya.Colors.accentOrange)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: Haya.Radius.sm)
+                                .strokeBorder(Haya.Colors.accentOrange.opacity(0.3), lineWidth: 1.5)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .glassCard()
+    }
+
     // MARK: - Debug
 
     private var debugSection: some View {
@@ -203,10 +388,10 @@ struct SettingsView: View {
 
             VStack(spacing: Haya.Spacing.sm) {
                 debugRow("Pipeline", value: pipeline.loadingStatus)
-                debugRow("VLM Model", value: pipeline.vlmService.currentModelID.components(separatedBy: "/").last ?? "—")
-                debugRow("VLM Loaded", value: pipeline.vlmService.isLoaded ? "Yes" : "No")
+                debugRow("VLM Status", value: vlmStatusText)
                 debugRow("People Enrolled", value: "\(enrollments.count)")
                 debugRow("Photos Scanned", value: "0") // TODO: from ScanEngine
+                debugRow("Disk Free", value: VLMService.availableDiskSpace)
             }
         }
         .glassCard()

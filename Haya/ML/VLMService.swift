@@ -2,6 +2,7 @@ import Foundation
 import CoreImage
 import UIKit
 import MLX
+import MLXVLM
 import MLXLMCommon
 import os
 
@@ -18,41 +19,98 @@ struct ModestyAssessment {
 /// Qwen2.5-VL modesty assessment via MLX Swift.
 /// Creates a fresh ChatSession per assessment to avoid context contamination.
 @MainActor
-class VLMService {
-    private var modelContext: ModelContext?
+class VLMService: ObservableObject {
+    private var modelContainer: ModelContainer?
     private let ciContext = CIContext()
-    private var _isLoading = false
 
     /// Model ID — Qwen2.5-VL-3B (83% accuracy in Kaggle testing, natively supported in mlx-swift-lm).
     let modelID = "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"
 
+    /// Estimated model size in bytes (~1.8 GB for 3B 4-bit).
+    static let estimatedModelSizeBytes: Int64 = 1_800_000_000
+
+    /// Download / load state machine.
+    enum DownloadState: Equatable {
+        case notDownloaded
+        case downloading(progress: Double)
+        case ready
+        case error(String)
+    }
+
+    @Published var downloadState: DownloadState = .notDownloaded
+    @Published var downloadProgress: Double = 0
+
     init() {}
 
-    /// Load the VLM model. Downloads from HuggingFace on first launch.
+    /// Download and load the VLM model with progress tracking.
+    func downloadAndLoad() async {
+        // Only allow starting from notDownloaded or error states
+        switch downloadState {
+        case .notDownloaded, .error: break
+        case .downloading, .ready: return
+        }
+
+        // Disk space check: need ~3x model size (download + compile + overhead)
+        let requiredSpace = Self.estimatedModelSizeBytes * 3
+        if !Self.hasAvailableDiskSpace(requiredSpace) {
+            let needed = ByteCountFormatter.string(fromByteCount: requiredSpace, countStyle: .file)
+            downloadState = .error("Not enough disk space. Need \(needed) free.")
+            LogStore.shared.log(.error, "VLM", "Insufficient disk space for model download")
+            return
+        }
+
+        downloadState = .downloading(progress: 0)
+        downloadProgress = 0
+        LogStore.shared.log(.info, "VLM", "Downloading \(modelID)...")
+
+        do {
+            MLX.GPU.set(cacheLimit: 512 * 1024 * 1024)
+
+            let config = ModelConfiguration(id: modelID)
+            let container = try await VLMModelFactory.shared.loadContainer(
+                configuration: config
+            ) { [weak self] progress in
+                Task { @MainActor in
+                    let fraction = progress.fractionCompleted
+                    self?.downloadProgress = fraction
+                    self?.downloadState = .downloading(progress: fraction)
+                }
+            }
+
+            self.modelContainer = container
+            downloadState = .ready
+            downloadProgress = 1.0
+            LogStore.shared.log(.info, "VLM", "Model downloaded and loaded successfully")
+        } catch {
+            downloadState = .error(error.localizedDescription)
+            downloadProgress = 0
+            LogStore.shared.log(.error, "VLM", "Download failed: \(error.localizedDescription)")
+            logger.error("VLM download failed: \(error)")
+        }
+    }
+
+    /// Load a previously downloaded model (no download needed).
     func loadModel() async throws {
-        guard modelContext == nil, !_isLoading else { return }
-        _isLoading = true
-        defer { _isLoading = false }
+        // If already loaded, skip
+        guard modelContainer == nil else { return }
 
-        LogStore.shared.log(.info, "VLM", "Loading \(modelID)...")
-
-        MLX.GPU.set(cacheLimit: 512 * 1024 * 1024)
-
-        let loaded = try await MLXLMCommon.loadModel(id: modelID)
-        self.modelContext = loaded
-        LogStore.shared.log(.info, "VLM", "Model loaded successfully")
+        // If download hasn't happened, use downloadAndLoad instead
+        await downloadAndLoad()
+        if modelContainer == nil {
+            throw VLMError.modelNotLoaded
+        }
     }
 
     /// Assess whether a person in the image is modestly dressed.
     /// Creates a fresh ChatSession per call — no context leaks between photos.
     func assessModesty(personCrop: CIImage, customPrompt: String? = nil) async throws -> ModestyAssessment {
-        guard let context = modelContext else {
+        guard let container = modelContainer else {
             throw VLMError.modelNotLoaded
         }
 
         // Fresh session per assessment — no context leaks between photos.
         let session = ChatSession(
-            context,
+            container,
             instructions: "You check Islamic modesty in photos. Focus ONLY on THIS person. Be extremely concise.",
             generateParameters: GenerateParameters(maxTokens: 200),
             processing: UserInput.Processing(resize: CGSize(width: 448, height: 448))
@@ -73,12 +131,36 @@ class VLMService {
 
     /// Release the model to free memory.
     func unload() {
-        modelContext = nil
+        modelContainer = nil
         MLX.GPU.set(cacheLimit: 0)
+        downloadState = .notDownloaded
     }
 
-    var isLoaded: Bool { modelContext != nil }
+    var isLoaded: Bool { modelContainer != nil }
     var currentModelID: String { modelID }
+
+    /// Formatted model size for display.
+    static var formattedModelSize: String {
+        ByteCountFormatter.string(fromByteCount: estimatedModelSizeBytes, countStyle: .file)
+    }
+
+    /// Check available disk space.
+    static func hasAvailableDiskSpace(_ required: Int64) -> Bool {
+        guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
+              let free = attrs[.systemFreeSize] as? Int64 else {
+            return true // Can't check → allow attempt
+        }
+        return free > required
+    }
+
+    /// Available disk space formatted for display.
+    static var availableDiskSpace: String {
+        guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
+              let free = attrs[.systemFreeSize] as? Int64 else {
+            return "Unknown"
+        }
+        return ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+    }
 
     // MARK: - Prompt
 
@@ -164,11 +246,13 @@ class VLMService {
     enum VLMError: LocalizedError {
         case modelNotLoaded
         case imageConversionFailed
+        case insufficientDiskSpace
 
         var errorDescription: String? {
             switch self {
-            case .modelNotLoaded: return "VLM model not loaded. Call loadModel() first."
+            case .modelNotLoaded: return "VLM model not loaded. Download it from Settings."
             case .imageConversionFailed: return "Failed to convert image for VLM processing."
+            case .insufficientDiskSpace: return "Not enough disk space to download the model."
             }
         }
     }
