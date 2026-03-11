@@ -16,6 +16,7 @@ struct HayaApp: App {
             }
             .environmentObject(pipeline)
             .environmentObject(appState)
+            .environmentObject(LogStore.shared)
             .preferredColorScheme(.dark)
             .task {
                 await pipeline.loadModels()

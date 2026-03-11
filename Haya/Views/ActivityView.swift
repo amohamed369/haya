@@ -3,7 +3,7 @@ import SwiftUI
 /// Activity tab: scan progress, model status, pipeline stages, and live log feed.
 struct ActivityView: View {
     @EnvironmentObject var pipeline: Pipeline
-    @ObservedObject var logStore = LogStore.shared
+    @EnvironmentObject var logStore: LogStore
 
     @State private var animateArc = false
     @State private var logFilter: LogStore.Level? = nil

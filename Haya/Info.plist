@@ -33,10 +33,7 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Haya uses Face ID to protect hidden photo visibility.</string>
 	<key>UIAppFonts</key>
-	<array>
-		<string>Fraunces-VariableFont.ttf</string>
-		<string>DMSans-VariableFont.ttf</string>
-	</array>
+	<array/>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>
