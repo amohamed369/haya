@@ -2,7 +2,7 @@ name: Haya
 options:
   bundleIdPrefix: com.haya
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "18.0"
   xcodeVersion: "16.0"
   createIntermediateGroups: true
 
