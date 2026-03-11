@@ -73,7 +73,7 @@ from config import cfg
 # which YAML parses as null, causing yacs type mismatch. Set only the keys
 # that build_transformer.__init__ actually reads.
 cfg.MODEL.NAME = "ViT-B-16"
-cfg.MODEL.STRIDE_SIZE = [16, 16]
+cfg.MODEL.STRIDE_SIZE = [12, 12]  # checkpoint trained with overlapping patches
 cfg.MODEL.PRETRAIN_CHOICE = "self"
 cfg.MODEL.SIE_CAMERA = True
 cfg.MODEL.SIE_VIEW = False
@@ -85,7 +85,7 @@ cfg.TEST.WEIGHT = ""
 cfg.INPUT.SIZE_TRAIN = [INPUT_H, INPUT_W]
 cfg.INPUT.SIZE_TEST = [INPUT_H, INPUT_W]
 
-model = make_model(cfg, num_class=4101, camera_num=15, view_num=1)
+model = make_model(cfg, num_class=1041, camera_num=15, view_num=1)  # MSMT17 has 1041 identities
 checkpoint = torch.load(str(CHECKPOINT_PATH), map_location="cpu")
 model.load_state_dict(checkpoint, strict=False)
 model.float()
