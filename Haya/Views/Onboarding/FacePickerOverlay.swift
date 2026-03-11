@@ -27,23 +27,20 @@ struct FacePickerOverlay: View {
             .padding(.top, Haya.Spacing.md)
 
             // Image with face overlays
-            GeometryReader { geo in
-                ZStack {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: geo.size.width, maxHeight: geo.size.height)
-                        .overlay {
-                            if isDetecting {
-                                ProgressView()
-                                    .tint(Haya.Colors.accentOrange)
-                            } else {
-                                faceOverlays(in: geo.size)
-                            }
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .overlay {
+                    if isDetecting {
+                        ProgressView()
+                            .tint(Haya.Colors.accentOrange)
+                    } else {
+                        GeometryReader { overlayGeo in
+                            faceOverlays(in: overlayGeo.size)
                         }
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+                .padding(.horizontal, Haya.Spacing.md)
 
             // Actions
             HStack(spacing: Haya.Spacing.md) {
@@ -69,25 +66,16 @@ struct FacePickerOverlay: View {
     // MARK: - Face Overlays
 
     @ViewBuilder
-    private func faceOverlays(in viewSize: CGSize) -> some View {
-        let imageSize = image.size
-        let imageAspect = imageSize.width / imageSize.height
-        let viewAspect = viewSize.width / viewSize.height
-
-        let displaySize: CGSize = imageAspect > viewAspect
-            ? CGSize(width: viewSize.width, height: viewSize.width / imageAspect)
-            : CGSize(width: viewSize.height * imageAspect, height: viewSize.height)
-
-        let offsetX = (viewSize.width - displaySize.width) / 2
-        let offsetY = (viewSize.height - displaySize.height) / 2
-
+    private func faceOverlays(in size: CGSize) -> some View {
+        // The overlay GeometryReader gives us the exact Image display size.
+        // No offset needed — coordinate space matches 1:1.
         ForEach(faceRects.indices, id: \.self) { index in
-            let normalizedRect = faceRects[index]
+            let r = faceRects[index]
             // Vision uses bottom-left origin, convert to top-left
-            let x = normalizedRect.origin.x * displaySize.width + offsetX
-            let y = (1 - normalizedRect.origin.y - normalizedRect.height) * displaySize.height + offsetY
-            let w = normalizedRect.width * displaySize.width
-            let h = normalizedRect.height * displaySize.height
+            let x = r.origin.x * size.width
+            let y = (1 - r.origin.y - r.height) * size.height
+            let w = r.width * size.width
+            let h = r.height * size.height
 
             let isSelected = selectedIndex == index
 
@@ -119,7 +107,9 @@ struct FacePickerOverlay: View {
         }
 
         let request = VNDetectFaceRectanglesRequest()
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        // Pass UIImage orientation so Vision returns rects matching the displayed image
+        let orientation = CGImagePropertyOrientation(image.imageOrientation)
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
 
         do {
             try handler.perform([request])
@@ -131,5 +121,23 @@ struct FacePickerOverlay: View {
         }
 
         isDetecting = false
+    }
+}
+
+// MARK: - UIImage Orientation → CGImagePropertyOrientation
+
+extension CGImagePropertyOrientation {
+    init(_ uiOrientation: UIImage.Orientation) {
+        switch uiOrientation {
+        case .up:            self = .up
+        case .upMirrored:    self = .upMirrored
+        case .down:          self = .down
+        case .downMirrored:  self = .downMirrored
+        case .left:          self = .left
+        case .leftMirrored:  self = .leftMirrored
+        case .right:         self = .right
+        case .rightMirrored: self = .rightMirrored
+        @unknown default:    self = .up
+        }
     }
 }

@@ -403,7 +403,8 @@ struct AddPersonSheet: View {
         for (i, image) in images.enumerated() {
             guard let cgImage = image.cgImage else { continue }
             let request = VNDetectFaceRectanglesRequest()
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            let orientation = CGImagePropertyOrientation(image.imageOrientation)
+            let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
             do {
                 try handler.perform([request])
                 let count = request.results?.count ?? 0

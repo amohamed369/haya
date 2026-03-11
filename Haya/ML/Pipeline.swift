@@ -80,16 +80,10 @@ class Pipeline: ObservableObject {
             logger.error("Identification model failed: \(error)")
         }
 
-        // 3. VLM (large download)
-        loadingStatus = "Loading VLM (this may download ~1.6GB)..."
-        log.log(.info, "Pipeline", "Loading VLM model...")
-        do {
-            try await vlmService.loadModel()
-            log.log(.info, "Pipeline", "VLM loaded: \(vlmService.currentModelID)")
-        } catch {
-            log.log(.error, "Pipeline", "VLM failed: \(error.localizedDescription)")
-            logger.error("VLM failed: \(error)")
-        }
+        // 3. VLM — skip at startup to avoid iOS disk-write watchdog kill
+        // (~1.6GB download + CoreML compilation exceeds iOS daily write budget).
+        // VLM loads lazily on first pipeline run, or manually via Settings.
+        log.log(.info, "Pipeline", "VLM deferred (load on first use or via Settings)")
 
         // Always mark ready — degraded functionality is better than no functionality
         loadingStatus = vlmService.isLoaded ? "Ready" : "Ready (VLM unavailable)"
@@ -204,8 +198,16 @@ class Pipeline: ObservableObject {
             )
         }
 
-        // Step 4: VLM modesty check — prefer instance-masked crop (isolates person),
-        // fall back to rectangular personBox crop.
+        // Step 4: VLM modesty check — lazy-load on first use
+        if !vlmService.isLoaded {
+            do {
+                log.log(.info, "Pipeline", "Loading VLM on first use...")
+                try await vlmService.loadModel()
+            } catch {
+                log.log(.error, "Pipeline", "VLM load failed: \(error.localizedDescription)")
+            }
+        }
+        // Prefer instance-masked crop (isolates person), fall back to rectangular personBox crop.
         let personCrop: CIImage
         if #available(iOS 17.0, *), let maskIdx = person.instanceMaskIndex,
            let maskedCrop = try? await detector.maskedCrop(instanceIndex: maskIdx, in: image) {
