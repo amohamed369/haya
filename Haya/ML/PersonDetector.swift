@@ -9,7 +9,7 @@ private let logger = Logger(subsystem: "com.haya.app", category: "PersonDetector
 
 /// Source of the tight person crop box.
 enum PersonBoxSource {
-    case mask           // YOLO segmentation mask (tightest — not yet available via Vision framework)
+    case instanceMask   // VNGeneratePersonInstanceMaskRequest (tightest, pixel-perfect, iOS 17+)
     case faceAnchored   // Estimated from face using anthropometric ratios
     case yoloRaw        // Raw YOLO bounding box
 }
@@ -33,6 +33,9 @@ struct DetectedPerson: Identifiable {
     let confidence: Float
     /// Source of detection.
     let source: DetectionSource
+    /// Instance mask index for VNGeneratePersonInstanceMaskRequest (iOS 17+).
+    /// Use with `PersonDetector.maskedCrop(instanceIndex:)` for pixel-perfect crops.
+    let instanceMaskIndex: Int?
 
     enum DetectionSource {
         case faceOnly
@@ -41,19 +44,36 @@ struct DetectedPerson: Identifiable {
     }
 }
 
-/// Detects people in images using Apple Vision (faces) + YOLO11n-seg (bodies).
+/// Detects people in images using Apple Vision (faces) + YOLO11n (bodies) + instance masks (iOS 17+).
 actor PersonDetector {
     private var yoloModel: VNCoreMLModel?
+
+    // Instance mask state — kept alive for generating masked crops after detection.
+    private var lastMaskObservation: VNInstanceMaskObservation?
+    private var lastHandler: VNImageRequestHandler?
 
     func loadModels() async throws {
         let config = MLModelConfiguration()
         config.computeUnits = .all
-        let url = try Self.modelURL(name: "YOLO11nSeg")
+        let url = try Self.modelURL(name: "YOLO11n")
         let yolo = try MLModel(contentsOf: url, configuration: config)
         yoloModel = try VNCoreMLModel(for: yolo)
     }
 
-    /// Detect all people (faces + bodies) in the given image.
+    /// Generate a pixel-perfect masked crop for a detected person (iOS 17+).
+    /// Masks out background and other people, cropped tight to this person.
+    @available(iOS 17.0, *)
+    func maskedCrop(instanceIndex: Int, in ciImage: CIImage) throws -> CIImage? {
+        guard let obs = lastMaskObservation, let handler = lastHandler else { return nil }
+        let maskedBuffer = try obs.generateMaskedImage(
+            ofInstances: IndexSet(integer: instanceIndex),
+            from: handler,
+            croppedToInstancesExtent: true
+        )
+        return CIImage(cvPixelBuffer: maskedBuffer)
+    }
+
+    /// Detect all people (faces + bodies + instance masks) in the given image.
     func detect(in ciImage: CIImage) async throws -> [DetectedPerson] {
         let handler = VNImageRequestHandler(ciImage: ciImage, options: [:])
 
@@ -80,10 +100,81 @@ actor PersonDetector {
             requests.append(bodyRequest)
         }
 
+        // Set up instance mask request (iOS 17+)
+        var maskRequest: VNRequest?
+        if #available(iOS 17.0, *) {
+            let req = VNGeneratePersonInstanceMaskRequest()
+            requests.append(req)
+            maskRequest = req
+        }
+
         try handler.perform(requests)
 
+        // Extract mask observation after perform
+        var maskObservation: VNInstanceMaskObservation?
+        if #available(iOS 17.0, *),
+           let req = maskRequest as? VNGeneratePersonInstanceMaskRequest {
+            maskObservation = req.results?.first
+        }
+
+        // Store for later masked crop generation
+        self.lastMaskObservation = maskObservation
+        self.lastHandler = handler
+
+        // Parse instance mask bounding boxes
+        var maskBoxes: [(index: Int, box: CGRect)] = []
+        if let obs = maskObservation {
+            maskBoxes = Self.parseMaskBoundingBoxes(obs)
+        }
+
         let faceResults = parseFaceResults(faceRequest)
-        return mergeDetections(faces: faceResults, bodies: bodyResults)
+        return mergeDetections(faces: faceResults, bodies: bodyResults, maskBoxes: maskBoxes)
+    }
+
+    // MARK: - Instance Mask Parsing
+
+    /// Extract per-instance bounding boxes from the instance mask pixel buffer.
+    /// Returns normalized CGRects in top-left origin coordinate system.
+    private static func parseMaskBoundingBoxes(_ observation: VNInstanceMaskObservation) -> [(index: Int, box: CGRect)] {
+        let buffer = observation.instanceMask
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+
+        let width = CVPixelBufferGetWidth(buffer)
+        let height = CVPixelBufferGetHeight(buffer)
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return [] }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+
+        // Track min/max bounds per instance label
+        var bounds: [UInt8: (minX: Int, maxX: Int, minY: Int, maxY: Int)] = [:]
+
+        for y in 0..<height {
+            let rowPtr = base.advanced(by: y * bytesPerRow).bindMemory(to: UInt8.self, capacity: width)
+            for x in 0..<width {
+                let label = rowPtr[x]
+                if label == 0 { continue } // skip background
+                if var b = bounds[label] {
+                    b.minX = min(b.minX, x)
+                    b.maxX = max(b.maxX, x)
+                    b.minY = min(b.minY, y)
+                    b.maxY = max(b.maxY, y)
+                    bounds[label] = b
+                } else {
+                    bounds[label] = (x, x, y, y)
+                }
+            }
+        }
+
+        return bounds.map { (label, b) in
+            // Convert to normalized top-left origin (mask buffer is already top-left)
+            let rect = CGRect(
+                x: CGFloat(b.minX) / CGFloat(width),
+                y: CGFloat(b.minY) / CGFloat(height),
+                width: CGFloat(b.maxX - b.minX + 1) / CGFloat(width),
+                height: CGFloat(b.maxY - b.minY + 1) / CGFloat(height)
+            )
+            return (Int(label), rect)
+        }.sorted { $0.box.width * $0.box.height > $1.box.width * $1.box.height } // largest first
     }
 
     // MARK: - Face Result Parsing
@@ -119,15 +210,18 @@ actor PersonDetector {
 
     // MARK: - Merge Detections
 
-    /// Merge face and body detections with multi-person handling.
+    /// Merge face, body, and instance mask detections.
+    /// Priority for personBox: instanceMask > faceAnchored > yoloRaw.
     /// For each body box, counts face centroids inside to detect multi-person boxes.
     /// When multi-person, tries face-anchored estimate — uses it if cleaner (fewer faces).
     private func mergeDetections(
         faces: [(CGRect, VNFaceObservation)],
-        bodies: [(CGRect, Float)]
+        bodies: [(CGRect, Float)],
+        maskBoxes: [(index: Int, box: CGRect)] = []
     ) -> [DetectedPerson] {
         var results: [DetectedPerson] = []
         var usedFaces: Set<Int> = []
+        var usedMasks: Set<Int> = []
 
         for (bodyRect, bodyConf) in bodies {
             // Count face centroids inside this body box
@@ -150,13 +244,31 @@ actor PersonDetector {
                 }
             }
 
-            // Compute personBox: when multi-person, try face-anchored estimate
+            // Try to match an instance mask to this body box (>50% overlap)
+            var matchedMask: (index: Int, box: CGRect)?
+            for mask in maskBoxes where !usedMasks.contains(mask.index) {
+                let overlap = intersectionOverMinArea(bodyRect, mask.box)
+                if overlap > 0.5 {
+                    matchedMask = mask
+                    break
+                }
+            }
+
+            // Compute personBox: instanceMask > faceAnchored > yoloRaw
             let personBox: CGRect
             let personBoxSource: PersonBoxSource
+            var maskIndex: Int?
 
-            if isMultiPerson, let face = bestFace {
+            if let mask = matchedMask {
+                // Instance mask available — tightest, pixel-perfect crop
+                personBox = mask.box
+                personBoxSource = .instanceMask
+                maskIndex = mask.index
+                usedMasks.insert(mask.index)
+                isMultiPerson = false // mask isolates individual
+                logger.debug("Using instance mask \(mask.index) for person box")
+            } else if isMultiPerson, let face = bestFace {
                 let estBox = Self.estimatePersonBox(faceBox: face.rect)
-                // Check if estimate contains fewer faces
                 let estFaceCount = faces.filter { estBox.contains(CGPoint(x: $0.0.midX, y: $0.0.midY)) }.count
                 if estFaceCount <= 1 {
                     personBox = estBox
@@ -183,7 +295,8 @@ actor PersonDetector {
                     personBoxSource: personBoxSource,
                     isMultiPerson: isMultiPerson,
                     confidence: max(face.obs.confidence, bodyConf),
-                    source: .faceAndBody
+                    source: .faceAndBody,
+                    instanceMaskIndex: maskIndex
                 ))
             } else {
                 results.append(DetectedPerson(
@@ -194,23 +307,63 @@ actor PersonDetector {
                     personBoxSource: personBoxSource,
                     isMultiPerson: isMultiPerson,
                     confidence: bodyConf,
-                    source: .bodyOnly
+                    source: .bodyOnly,
+                    instanceMaskIndex: maskIndex
                 ))
             }
         }
 
-        // Unmatched faces — estimate body from face
+        // Unmatched faces — try to match with unused masks, else estimate body
         for (fi, (faceRect, faceObs)) in faces.enumerated() where !usedFaces.contains(fi) {
-            let estBox = Self.estimatePersonBox(faceBox: faceRect)
+            // Try matching to an unused instance mask
+            var matchedMask: (index: Int, box: CGRect)?
+            let faceCentroid = CGPoint(x: faceRect.midX, y: faceRect.midY)
+            for mask in maskBoxes where !usedMasks.contains(mask.index) {
+                if mask.box.contains(faceCentroid) {
+                    matchedMask = mask
+                    break
+                }
+            }
+
+            let personBox: CGRect
+            let personBoxSource: PersonBoxSource
+            var maskIndex: Int?
+
+            if let mask = matchedMask {
+                personBox = mask.box
+                personBoxSource = .instanceMask
+                maskIndex = mask.index
+                usedMasks.insert(mask.index)
+            } else {
+                personBox = Self.estimatePersonBox(faceBox: faceRect)
+                personBoxSource = .faceAnchored
+            }
+
             results.append(DetectedPerson(
-                boundingBox: estBox,
+                boundingBox: personBox,
                 faceObservation: faceObs,
                 bodyBoundingBox: nil,
-                personBox: estBox,
-                personBoxSource: .faceAnchored,
+                personBox: personBox,
+                personBoxSource: personBoxSource,
                 isMultiPerson: false,
                 confidence: faceObs.confidence,
-                source: .faceOnly
+                source: .faceOnly,
+                instanceMaskIndex: maskIndex
+            ))
+        }
+
+        // Unmatched instance masks (no face or body matched) — add as body-only
+        for mask in maskBoxes where !usedMasks.contains(mask.index) {
+            results.append(DetectedPerson(
+                boundingBox: mask.box,
+                faceObservation: nil,
+                bodyBoundingBox: nil,
+                personBox: mask.box,
+                personBoxSource: .instanceMask,
+                isMultiPerson: false,
+                confidence: 0.9, // Apple Vision confidence not exposed, use high default
+                source: .bodyOnly,
+                instanceMaskIndex: mask.index
             ))
         }
 

@@ -172,12 +172,18 @@ class Pipeline: ObservableObject {
             )
         }
 
-        // Step 4: VLM modesty check — use personBox (tight single-person crop)
-        let imageSize = image.extent.size
-        let personRect = VisionCoordinates.toCIImageRect(person.personBox, imageSize: imageSize)
-            .intersection(image.extent)
-
-        let personCrop = image.cropped(to: personRect)
+        // Step 4: VLM modesty check — prefer instance-masked crop (isolates person),
+        // fall back to rectangular personBox crop.
+        let personCrop: CIImage
+        if #available(iOS 17.0, *), let maskIdx = person.instanceMaskIndex,
+           let maskedCrop = try? await detector.maskedCrop(instanceIndex: maskIdx, in: image) {
+            personCrop = maskedCrop
+        } else {
+            let imageSize = image.extent.size
+            let personRect = VisionCoordinates.toCIImageRect(person.personBox, imageSize: imageSize)
+                .intersection(image.extent)
+            personCrop = image.cropped(to: personRect)
+        }
 
         let assessment: ModestyAssessment?
         do {

@@ -15,7 +15,7 @@ struct ModestyAssessment {
     let rawResponse: String
 }
 
-/// SmolVLM2 service for modesty assessment via MLX Swift.
+/// Qwen2.5-VL modesty assessment via MLX Swift.
 /// Creates a fresh ChatSession per assessment to avoid context contamination.
 @MainActor
 class VLMService {
@@ -23,18 +23,10 @@ class VLMService {
     private let ciContext = CIContext()
     private var _isLoading = false
 
-    /// Model ID — auto-selected by available RAM.
-    let modelID: String
+    /// Model ID — Qwen2.5-VL-3B (83% accuracy in Kaggle testing, natively supported in mlx-swift-lm).
+    let modelID = "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"
 
-    init() {
-        let availableBytes = os_proc_available_memory()
-        let availableMB = availableBytes / (1024 * 1024)
-        if availableMB > 3000 {
-            modelID = "mlx-community/SmolVLM2-2.2B-Instruct-4bit"
-        } else {
-            modelID = "mlx-community/SmolVLM2-256M-Instruct-4bit"
-        }
-    }
+    init() {}
 
     /// Load the VLM model. Downloads from HuggingFace on first launch.
     func loadModel() async throws {
@@ -55,12 +47,12 @@ class VLMService {
             throw VLMError.modelNotLoaded
         }
 
-        // Fresh session per assessment — Context7 confirms this is the idiomatic pattern:
-        // "If you need a one-shot prompt/response simply create a ChatSession, evaluate the prompt and discard."
+        // Fresh session per assessment — no context leaks between photos.
         let session = ChatSession(
             context,
-            generateParameters: GenerateParameters(maxTokens: 60),
-            processing: UserInput.Processing(resize: CGSize(width: 384, height: 384))
+            instructions: "You check Islamic modesty in photos. Focus ONLY on THIS person. Be extremely concise.",
+            generateParameters: GenerateParameters(maxTokens: 200),
+            processing: UserInput.Processing(resize: CGSize(width: 448, height: 448))
         )
 
         let tempURL = try saveToTempFile(personCrop)
@@ -88,48 +80,53 @@ class VLMService {
     // MARK: - Prompt
 
     static let defaultModestyPrompt = """
-    Evaluate this person for modesty. Default answer is NO.
+    Check this person for Islamic modesty. Describe what you see for each area, then judge:
 
-    Check each — if ANY fails, answer NO:
-    [ ] Hair mostly covered (hijab, scarf, beanie, hoodie) — a few wisps or strands at edges are OK, but significant visible hair = FAIL
-    [ ] Arms covered to wrists — bare upper arms or sleeveless = FAIL
-    [ ] Legs covered (long pants or skirt) — any bare legs = FAIL
-    [ ] Clothing loose, not tight — form-fitting = FAIL
+    HEAD/HAIR: [2-3 words] → covered?
+    NECK: [2-3 words] → covered?
+    ARMS: [2-3 words] → covered to wrists?
+    CHEST/TORSO: [2-3 words] → loose, not form-fitting?
+    LEGS: [2-3 words] → covered?
+    FIT: [2-3 words] → loose overall?
 
-    If ANY check FAIL: answer NO
-    Only if ALL checks pass: answer YES
+    SELF-CHECK: Re-read your area descriptions. Any bare skin or hair visible?
 
-    Format: YES or NO, confidence (high/medium/low), which check failed or "all pass"
+    VERDICT: YES (all covered) or NO (any bare skin/hair visible)
     """
 
     // MARK: - Response Parsing
 
     func parseModestyResponse(_ text: String) -> ModestyAssessment {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let upper = trimmed.uppercased()
+        let lines = trimmed.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
 
-        // Scan first 5 words for YES/NO (handles VLM preamble like "Based on the image, YES...")
-        // Strip punctuation so "YES," / "YES." matches "YES" (avoids "NOBODY"/"NONE" false positives)
-        let words = upper.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
-        let answerWord = words.prefix(5).first(where: {
+        // Scan LAST LINE only for YES/NO verdict (avoids stray "no" in reasoning text).
+        // Matches Kaggle _parse_verdict behavior.
+        let lastLine = (lines.last ?? trimmed).uppercased()
+        let lastLineWords = lastLine.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+        let verdictWord = lastLineWords.first(where: {
             let clean = $0.trimmingCharacters(in: .punctuationCharacters)
             return clean == "YES" || clean == "NO"
         })?.trimmingCharacters(in: .punctuationCharacters)
 
         let isModest: Bool
-        if answerWord == "YES" {
-            isModest = true
-        } else if answerWord == "NO" {
-            isModest = false
+        if let verdict = verdictWord {
+            isModest = verdict == "YES"
         } else {
-            // Fallback: keyword scoring
-            let modestKeywords = ["modest", "covered", "hijab", "appropriate"]
-            let immodestKeywords = ["exposed", "revealing", "visible hair", "not modest", "immodest"]
-            let modestScore = modestKeywords.filter { upper.contains($0.uppercased()) }.count
-            let immodestScore = immodestKeywords.filter { upper.contains($0.uppercased()) }.count
-            isModest = modestScore > immodestScore
+            // Fallback: scan entire response for verdict keywords
+            let upper = trimmed.uppercased()
+            let modestKeywords = ["MODEST", "COVERED", "HIJAB", "ALL PASS"]
+            let immodestKeywords = ["EXPOSED", "REVEALING", "VISIBLE HAIR", "NOT MODEST", "BARE SKIN"]
+            let modestScore = modestKeywords.filter { upper.contains($0) }.count
+            let immodestScore = immodestKeywords.filter { upper.contains($0) }.count
+            // Default to hide (conservative for privacy app)
+            isModest = modestScore > immodestScore && immodestScore == 0
         }
 
+        // Extract confidence from response
+        let upper = trimmed.uppercased()
         let confidence: String
         if upper.contains("HIGH") {
             confidence = "high"
@@ -139,15 +136,12 @@ class VLMService {
             confidence = "medium"
         }
 
-        let reason = text
-            .components(separatedBy: .newlines)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            .last ?? text
+        let reason = lines.last ?? trimmed
 
         return ModestyAssessment(
             isModest: isModest,
             confidence: confidence,
-            reason: reason.trimmingCharacters(in: .whitespacesAndNewlines),
+            reason: reason,
             rawResponse: text
         )
     }
