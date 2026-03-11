@@ -96,13 +96,12 @@ class CLIPReIDImageEncoder(nn.Module):
         super().__init__()
         self.model = model
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # In eval mode, build_transformer.forward(x) returns image features
-        # It may return a tuple (feat, feat_proj) — we want the projected 512-dim
+        # Eval mode returns [768-dim ViT CLS | 512-dim CLIP proj] = 1280-dim
+        # We want the 512-dim CLIP projection for re-ID
         out = self.model(x)
         if isinstance(out, (tuple, list)):
-            feat = out[-1]  # projected features (512-dim)
-        else:
-            feat = out
+            out = out[-1]
+        feat = out[:, -512:]  # CLIP projection (last 512 dims)
         feat = feat / (feat.norm(dim=-1, keepdim=True) + 1e-8)
         return feat
 
