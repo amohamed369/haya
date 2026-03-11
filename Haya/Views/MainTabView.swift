@@ -66,9 +66,6 @@ struct MainTabView: View {
                 showHidden = false
             }
         }
-        .task {
-            await pipeline.loadModels()
-        }
     }
 
     private func toggleVisibility() {

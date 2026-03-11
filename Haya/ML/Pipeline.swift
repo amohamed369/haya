@@ -47,6 +47,7 @@ class Pipeline: ObservableObject {
     let vlmService = VLMService()
 
     @Published var isReady = false
+    @Published var isEnrollReady = false
     @Published var isProcessing = false
     @Published var loadingStatus = "Not loaded"
     @Published var vlmLoadingProgress: Double = 0
@@ -60,6 +61,7 @@ class Pipeline: ObservableObject {
             loadingStatus = "Loading identification models..."
 
             try await identifier.loadModels()
+            isEnrollReady = true
             loadingStatus = "Loading VLM (this may download ~500MB)..."
 
             try await vlmService.loadModel()

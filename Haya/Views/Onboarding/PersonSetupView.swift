@@ -77,7 +77,7 @@ struct PersonSetupView: View {
                         .glassCard(padding: 16, radius: Haya.Radius.lg)
                     }
                     .buttonStyle(.plain)
-                    .disabled(!pipeline.isReady)
+                    .disabled(!pipeline.isEnrollReady)
                 }
                 .padding(.horizontal, Haya.Spacing.lg)
             }

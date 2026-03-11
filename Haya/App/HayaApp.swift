@@ -17,6 +17,9 @@ struct HayaApp: App {
             .environmentObject(pipeline)
             .environmentObject(appState)
             .preferredColorScheme(.dark)
+            .task {
+                await pipeline.loadModels()
+            }
             .onAppear {
                 HayaFont.logAvailableFonts()
             }
