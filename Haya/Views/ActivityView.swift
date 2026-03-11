@@ -377,6 +377,7 @@ struct ActivityView: View {
                         lineWidth: 1
                     )
                 )
+                .compositingGroup()
                 .shadow(
                     color: isActive ? Haya.Shadows.cardDrop : .clear,
                     radius: 0.5, x: 1, y: 2

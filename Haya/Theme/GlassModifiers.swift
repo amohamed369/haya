@@ -58,17 +58,20 @@ extension View {
     // MARK: - Shadow Presets
 
     func hayaShadowSm() -> some View {
-        self.shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1, y: 2)
+        self.compositingGroup()
+            .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1, y: 2)
             .shadow(color: Haya.Shadows.soft, radius: 4, y: 2)
     }
 
     func hayaShadowMd() -> some View {
-        self.shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1.5, y: 2.5)
+        self.compositingGroup()
+            .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1.5, y: 2.5)
             .shadow(color: Haya.Shadows.soft, radius: 8, y: 4)
     }
 
     func hayaShadowLg() -> some View {
-        self.shadow(color: Haya.Shadows.soft, radius: 16, y: 8)
+        self.compositingGroup()
+            .shadow(color: Haya.Shadows.soft, radius: 16, y: 8)
     }
 }
 
@@ -159,7 +162,7 @@ struct HayaPillButtonStyle: ButtonStyle {
                     )
             )
             .foregroundStyle(isProminent ? Haya.Colors.fgOnOrange : Haya.Colors.textSage)
-            // Crisp offset shadow
+            .compositingGroup()
             .shadow(
                 color: isProminent
                     ? Haya.Shadows.cardDrop
@@ -210,7 +213,7 @@ struct PillChip: View {
                         )
                 )
                 .foregroundStyle(isActive ? Haya.Colors.fgOnOrange : Haya.Colors.textSage)
-                // Crisp offset shadow when active
+                .compositingGroup()
                 .shadow(
                     color: isActive ? Haya.Shadows.cardDrop : .clear,
                     radius: 0.5, x: 1, y: 2
