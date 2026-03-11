@@ -13,7 +13,7 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Tab content
+            // Tab content with snappy crossfade
             NavigationStack {
                 Group {
                     switch selectedTab {
@@ -29,6 +29,7 @@ struct MainTabView: View {
                         PhotoGridView(showHidden: $showHidden)
                     }
                 }
+                .transition(.opacity.animation(.easeOut(duration: 0.15)))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -54,9 +55,20 @@ struct MainTabView: View {
                     )
                     .overlay(
                         Circle()
-                            .strokeBorder(Haya.Colors.glassBorder, lineWidth: 1)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.18),
+                                        Color.white.opacity(0.05)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
                     )
-                    .shadow(color: Haya.Shadows.soft, radius: 8, y: 4)
+                    .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1, y: 2)
+                    .shadow(color: Haya.Shadows.soft, radius: 4, y: 2)
             }
             .padding(.trailing, 20)
             .padding(.top, 8)

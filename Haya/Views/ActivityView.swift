@@ -359,7 +359,7 @@ struct ActivityView: View {
     private func filterPill(_ label: String, level: LogStore.Level?) -> some View {
         let isActive = logFilter == level
         return Button {
-            withAnimation(.spring(response: 0.3)) { logFilter = level }
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { logFilter = level }
         } label: {
             Text(label)
                 .font(HayaFont.caption)
@@ -371,9 +371,15 @@ struct ActivityView: View {
                 )
                 .overlay(
                     Capsule().strokeBorder(
-                        isActive ? Color.clear : Haya.Colors.glassBorder,
+                        isActive
+                            ? AnyShapeStyle(Color.white.opacity(0.15))
+                            : AnyShapeStyle(Haya.Colors.glassBorder),
                         lineWidth: 1
                     )
+                )
+                .shadow(
+                    color: isActive ? Haya.Shadows.cardDrop : .clear,
+                    radius: 0.5, x: 1, y: 2
                 )
         }
         .buttonStyle(.plain)

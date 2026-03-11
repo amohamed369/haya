@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Glass Card
 
-/// Frosted glass card with warm-tinted border and soft shadow.
+/// Frosted glass card with directional gradient border and offset shadow.
 struct GlassCard: ViewModifier {
     var padding: CGFloat = 24
     var radius: CGFloat = Haya.Radius.lg
@@ -11,18 +11,45 @@ struct GlassCard: ViewModifier {
         content
             .padding(padding)
             .background(
-                RoundedRectangle(cornerRadius: radius)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: radius)
-                            .fill(Haya.Colors.glassBgWarm)
-                    )
+                ZStack {
+                    RoundedRectangle(cornerRadius: radius)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: radius)
+                        .fill(Haya.Colors.glassBgWarm)
+                    // Inner highlight — simulates light on the top-left edge
+                    RoundedRectangle(cornerRadius: radius)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.04),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .center
+                            )
+                        )
+                }
             )
+            // Directional gradient border (light source top-left)
             .overlay(
                 RoundedRectangle(cornerRadius: radius)
-                    .strokeBorder(Haya.Colors.glassBorderWarm, lineWidth: 1)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.18),
+                                Color.white.opacity(0.06),
+                                Color.white.opacity(0.03)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
             )
-            .shadow(color: Haya.Shadows.soft, radius: 16, y: 8)
+            // Crisp offset shadow (neobrutalist depth)
+            .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1.5, y: 2.5)
+            // Soft ambient shadow
+            .shadow(color: Haya.Shadows.soft, radius: 10, x: 0, y: 5)
     }
 }
 
@@ -34,7 +61,7 @@ extension View {
 
 // MARK: - Sage Background
 
-/// Full-screen sage green gradient with ambient organic shapes.
+/// Full-screen sage gradient with subtle ambient color shifts.
 struct SageBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
@@ -43,25 +70,26 @@ struct SageBackground: ViewModifier {
                     Haya.Gradients.sageBackground
                         .ignoresSafeArea()
 
-                    // Ambient orange glow top-right
+                    // Warm ambient shift top-right
                     Circle()
                         .fill(
                             RadialGradient(
-                                colors: [Haya.Colors.accentOrange.opacity(0.08), .clear],
+                                colors: [Haya.Colors.accentOrange.opacity(0.05), .clear],
                                 center: .center,
                                 startRadius: 0,
-                                endRadius: 140
+                                endRadius: 150
                             )
                         )
-                        .frame(width: 280, height: 280)
-                        .offset(x: 100, y: -120)
+                        .frame(width: 300, height: 300)
+                        .offset(x: 110, y: -140)
+                        .blur(radius: 30)
                         .ignoresSafeArea()
 
-                    // Ambient lavender glow bottom-left
+                    // Cool shift bottom-left
                     Circle()
                         .fill(
                             RadialGradient(
-                                colors: [Haya.Colors.accentLavender.opacity(0.06), .clear],
+                                colors: [Haya.Colors.accentTeal.opacity(0.03), .clear],
                                 center: .center,
                                 startRadius: 0,
                                 endRadius: 100
@@ -69,6 +97,7 @@ struct SageBackground: ViewModifier {
                         )
                         .frame(width: 200, height: 200)
                         .offset(x: -80, y: 300)
+                        .blur(radius: 20)
                         .ignoresSafeArea()
                 }
             )
@@ -83,16 +112,18 @@ extension View {
 
 // MARK: - Pill Button Style
 
-/// Orange pill CTA with glow shadow and scale press effect.
+/// Orange pill CTA with offset shadow and translate-down press.
 struct HayaPillButtonStyle: ButtonStyle {
     var isProminent: Bool = true
 
     func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+
         configuration.label
             .font(HayaFont.pill)
-            .tracking(0.3)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
+            .tracking(0.4)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 15)
             .background(
                 Capsule()
                     .fill(isProminent
@@ -102,17 +133,31 @@ struct HayaPillButtonStyle: ButtonStyle {
             .overlay(
                 Capsule()
                     .strokeBorder(
-                        isProminent ? Color.clear : Haya.Colors.glassBorder,
-                        lineWidth: 1.5
+                        isProminent
+                            ? AnyShapeStyle(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                              )
+                            : AnyShapeStyle(Haya.Colors.glassBorder),
+                        lineWidth: isProminent ? 1 : 1.5
                     )
             )
             .foregroundStyle(isProminent ? Color(hex: "2A3420") : Haya.Colors.textSage)
+            // Crisp offset shadow
             .shadow(
-                color: isProminent ? Haya.Shadows.glowOrange : .clear,
-                radius: 12, y: 4
+                color: isProminent
+                    ? Haya.Shadows.cardDrop
+                    : .clear,
+                radius: pressed ? 0 : 1,
+                x: pressed ? 0.5 : 2,
+                y: pressed ? 0.5 : 3
             )
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            // Translate down on press (neobrutalist push)
+            .offset(y: pressed ? 2 : 0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.8), value: pressed)
     }
 }
 
@@ -133,7 +178,7 @@ struct PillChip: View {
         Button(action: action) {
             Text(label)
                 .font(HayaFont.pill)
-                .tracking(0.2)
+                .tracking(0.3)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 10)
                 .background(
@@ -145,14 +190,17 @@ struct PillChip: View {
                 .overlay(
                     Capsule()
                         .strokeBorder(
-                            isActive ? Color.clear : Haya.Colors.glassBorder,
-                            lineWidth: 1.5
+                            isActive
+                                ? AnyShapeStyle(Color.white.opacity(0.15))
+                                : AnyShapeStyle(Haya.Colors.glassBorder),
+                            lineWidth: 1
                         )
                 )
                 .foregroundStyle(isActive ? Color(hex: "2A3420") : Haya.Colors.textSage)
+                // Crisp offset shadow when active
                 .shadow(
-                    color: isActive ? Haya.Shadows.glowOrange : .clear,
-                    radius: 10, y: 2
+                    color: isActive ? Haya.Shadows.cardDrop : .clear,
+                    radius: 0.5, x: 1, y: 2
                 )
         }
         .buttonStyle(.plain)
@@ -161,7 +209,7 @@ struct PillChip: View {
 
 // MARK: - Avatar Circle
 
-/// Person avatar with orange gradient and initial letter.
+/// Person avatar with orange gradient, border ring, and offset shadow.
 struct AvatarCircle: View {
     let name: String
     var size: CGFloat = 48
@@ -175,13 +223,18 @@ struct AvatarCircle: View {
                 Circle()
                     .fill(Haya.Gradients.avatarOrange)
             )
-            .shadow(color: Haya.Shadows.glowOrange, radius: 8, y: 4)
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 1.5)
+            )
+            .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1, y: 2)
+            .shadow(color: Haya.Shadows.soft, radius: 4, y: 2)
     }
 }
 
 // MARK: - Section Header
 
-/// Fraunces heading with optional "See all" trailing action.
+/// Fraunces heading with optional trailing action.
 struct SectionHeader: View {
     let title: String
     var trailing: String?
@@ -205,7 +258,7 @@ struct SectionHeader: View {
 
 // MARK: - Status Badge
 
-/// Small rounded badge for filter status.
+/// Small rounded badge with color-matched border.
 struct StatusBadge: View {
     let text: String
     let color: Color
@@ -214,11 +267,14 @@ struct StatusBadge: View {
         Text(text)
             .font(HayaFont.caption2)
             .fontWeight(.semibold)
-            .tracking(0.3)
+            .tracking(0.4)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
             .background(
-                Capsule().fill(color.opacity(0.15))
+                Capsule().fill(color.opacity(0.12))
+            )
+            .overlay(
+                Capsule().strokeBorder(color.opacity(0.20), lineWidth: 1)
             )
             .foregroundStyle(color)
     }
@@ -226,7 +282,7 @@ struct StatusBadge: View {
 
 // MARK: - Bottom Nav Bar
 
-/// Custom glassmorphism bottom tab bar.
+/// Custom glassmorphism bottom tab bar with rounded top.
 struct HayaTabBar: View {
     @Binding var selectedTab: Int
 
@@ -241,22 +297,18 @@ struct HayaTabBar: View {
         HStack {
             ForEach(0..<tabs.count, id: \.self) { index in
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
                         selectedTab = index
                     }
                 } label: {
-                    VStack(spacing: 4) {
-                        if selectedTab == index {
-                            Capsule()
-                                .fill(Haya.Colors.accentOrange)
-                                .frame(width: 20, height: 3)
-                                .shadow(color: Haya.Shadows.glowOrange, radius: 4)
-                        } else {
-                            Spacer().frame(height: 3)
-                        }
+                    VStack(spacing: 5) {
+                        // Selected indicator
+                        Capsule()
+                            .fill(selectedTab == index ? Haya.Colors.accentOrange : Color.clear)
+                            .frame(width: selectedTab == index ? 22 : 0, height: 3)
 
                         Image(systemName: tabs[index].icon)
-                            .font(.system(size: 20))
+                            .font(.system(size: 19, weight: selectedTab == index ? .semibold : .regular))
                             .foregroundStyle(
                                 selectedTab == index
                                     ? Haya.Colors.accentOrange
@@ -267,7 +319,7 @@ struct HayaTabBar: View {
                             .font(HayaFont.caption2)
                             .foregroundStyle(
                                 selectedTab == index
-                                    ? Haya.Colors.accentOrange
+                                    ? Haya.Colors.textCream
                                     : Haya.Colors.textSageDim
                             )
                     }
@@ -277,22 +329,51 @@ struct HayaTabBar: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.top, 12)
-        .padding(.bottom, 20)
+        .padding(.horizontal, 12)
+        .padding(.top, 14)
+        .padding(.bottom, 22)
         .background(
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Rectangle()
-                        .fill(Color(hex: "37442A").opacity(0.85))
+            ZStack {
+                // Glass base with rounded top
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 20,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 20
                 )
-                .overlay(alignment: .top) {
-                    Rectangle()
-                        .fill(Haya.Colors.glassBorder)
-                        .frame(height: 1)
-                }
-                .ignoresSafeArea(edges: .bottom)
+                .fill(.ultraThinMaterial)
+
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 20,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 20
+                )
+                .fill(Color(hex: "37442A").opacity(0.82))
+            }
+            .overlay(alignment: .top) {
+                // Gradient top border
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 20,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 20
+                )
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.14),
+                            Color.white.opacity(0.05),
+                            Color.white.opacity(0.02)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+            }
+            .shadow(color: Haya.Shadows.cardDrop, radius: 8, y: -3)
+            .ignoresSafeArea(edges: .bottom)
         )
     }
 }

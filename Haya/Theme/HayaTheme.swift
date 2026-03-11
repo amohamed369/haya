@@ -66,8 +66,10 @@ enum Haya {
     // MARK: Shadows
 
     enum Shadows {
-        static let soft = Color(hex: "28321E").opacity(0.15)
+        static let soft = Color(hex: "1A2410").opacity(0.20)
         static let glowOrange = Color(hex: "E8863A").opacity(0.25)
+        /// Crisp directional shadow for neobrutalist depth
+        static let cardDrop = Color(hex: "1A2410").opacity(0.40)
     }
 
     // MARK: Gradients

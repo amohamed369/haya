@@ -59,10 +59,19 @@ struct PeopleView: View {
                     .background(
                         Circle().fill(Haya.Gradients.orangeCTA)
                     )
-                    .shadow(
-                        color: Haya.Shadows.glowOrange,
-                        radius: 12, y: 6
+                    .overlay(
+                        Circle()
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 1
+                            )
                     )
+                    .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 2, y: 3)
+                    .shadow(color: Haya.Shadows.soft, radius: 6, y: 3)
             }
             .padding(.trailing, Haya.Spacing.lg)
             .padding(.bottom, 110)
