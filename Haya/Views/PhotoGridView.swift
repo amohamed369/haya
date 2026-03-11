@@ -6,9 +6,13 @@ struct PhotoGridView: View {
     @Binding var showHidden: Bool
 
     @State private var assets: [PHAsset] = []
-    @State private var filterResults: [String: PhotoFilterResult] = [:]
     @State private var selectedAsset: PHAsset?
     @State private var authorizationStatus: PHAuthorizationStatus = .notDetermined
+
+    /// Use pipeline's scan results (populated by ScanEngine).
+    private var filterResults: [String: PhotoFilterResult] {
+        pipeline.scanResults
+    }
 
     private let columns = [GridItem(.adaptive(minimum: 105), spacing: 3)]
 

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import CoreImage
 import Photos
 import os
@@ -50,6 +51,51 @@ class Pipeline: ObservableObject {
     @Published var isEnrollReady = false
     @Published var isProcessing = false
     @Published var loadingStatus = "Not loaded"
+
+    /// Scan engine for background photo processing.
+    private(set) lazy var scanEngine = ScanEngine(pipeline: self)
+
+    /// Live scan progress — updated by observing ScanEngine's stream.
+    @Published var scanProgress = ScanProgress(total: 0, processed: 0, hidden: 0, kept: 0, errors: 0, isScanning: false)
+
+    /// Scan results keyed by asset localIdentifier.
+    @Published var scanResults: [String: PhotoFilterResult] = [:]
+
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        // Forward nested ObservableObject changes so SwiftUI re-renders
+        vlmService.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+    }
+
+    /// Start background scan and feed results back to published properties.
+    func startBackgroundScan(batchSize: Int = 20) {
+        Task {
+            // Listen to progress stream
+            let stream = await scanEngine.progressStream
+            Task {
+                for await progress in stream {
+                    self.scanProgress = progress
+                    // Sync results snapshot
+                    self.scanResults = await scanEngine.currentResults
+                }
+            }
+            await scanEngine.startScan(batchSize: batchSize)
+        }
+    }
+
+    /// Clear results and rescan everything.
+    func rescanAll(batchSize: Int = 20) {
+        Task {
+            await scanEngine.stopScan()
+            await scanEngine.clearResults()
+            scanResults = [:]
+            scanProgress = ScanProgress(total: 0, processed: 0, hidden: 0, kept: 0, errors: 0, isScanning: false)
+            startBackgroundScan(batchSize: batchSize)
+        }
+    }
 
     /// Load all models. Call once at app startup.
     /// Each model loads independently — one failure doesn't block the others.

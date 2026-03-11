@@ -20,6 +20,16 @@ struct HayaApp: App {
             .preferredColorScheme(.dark)
             .task {
                 await pipeline.loadModels()
+                // Auto-scan on launch if enabled and onboarding complete
+                if appState.hasCompletedOnboarding && appState.scanOnLaunch {
+                    pipeline.startBackgroundScan(batchSize: appState.batchSize)
+                }
+            }
+            .onChange(of: appState.hasCompletedOnboarding) { _, completed in
+                // Trigger first scan when onboarding finishes
+                if completed && pipeline.isReady {
+                    pipeline.startBackgroundScan(batchSize: appState.batchSize)
+                }
             }
             .onAppear {
                 HayaFont.logAvailableFonts()

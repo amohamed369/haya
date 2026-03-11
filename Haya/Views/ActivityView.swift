@@ -71,6 +71,8 @@ struct ActivityView: View {
 
     // MARK: - Scan Progress
 
+    private var progress: ScanProgress { pipeline.scanProgress }
+
     private var scanProgressCard: some View {
         VStack(spacing: Haya.Spacing.md) {
             HStack {
@@ -79,8 +81,8 @@ struct ActivityView: View {
                     .foregroundStyle(Haya.Colors.textCream)
                 Spacer()
                 StatusBadge(
-                    text: pipeline.isReady ? "Ready" : "Loading",
-                    color: pipeline.isReady ? Haya.Colors.accentGreen : Haya.Colors.accentYellow
+                    text: progress.isScanning ? "Scanning" : (pipeline.isReady ? "Ready" : "Loading"),
+                    color: progress.isScanning ? Haya.Colors.accentOrange : (pipeline.isReady ? Haya.Colors.accentGreen : Haya.Colors.accentYellow)
                 )
             }
 
@@ -94,17 +96,19 @@ struct ActivityView: View {
                     .frame(width: 180, height: 100)
 
                 ArcShape()
-                    .trim(from: 0, to: animateArc ? 0.0 : 0.0)
+                    .trim(from: 0, to: animateArc ? progress.percentComplete : 0.0)
                     .stroke(
                         Haya.Gradients.orangeCTA,
                         style: StrokeStyle(lineWidth: 14, lineCap: .round)
                     )
                     .frame(width: 180, height: 100)
+                    .animation(Haya.Motion.standard, value: progress.percentComplete)
 
                 VStack(spacing: 2) {
-                    Text("0")
+                    Text("\(progress.processed)")
                         .font(HayaFont.heading(36, weight: .bold))
                         .foregroundStyle(Haya.Colors.textCream)
+                        .contentTransition(.numericText())
                     Text("SCANNED")
                         .font(HayaFont.caption2)
                         .foregroundStyle(Haya.Colors.textSageDim)
@@ -115,9 +119,9 @@ struct ActivityView: View {
             .frame(height: 120)
 
             HStack(spacing: Haya.Spacing.sm) {
-                miniStat(value: "0", label: "Hidden", icon: "eye.slash", color: Haya.Colors.accentOrange)
-                miniStat(value: "0", label: "Kept", icon: "checkmark.circle", color: Haya.Colors.accentTeal)
-                miniStat(value: "0", label: "Pending", icon: "clock", color: Haya.Colors.accentLavender)
+                miniStat(value: "\(progress.hidden)", label: "Hidden", icon: "eye.slash", color: Haya.Colors.accentOrange)
+                miniStat(value: "\(progress.kept)", label: "Kept", icon: "checkmark.circle", color: Haya.Colors.accentTeal)
+                miniStat(value: "\(max(0, progress.total - progress.processed))", label: "Pending", icon: "clock", color: Haya.Colors.accentLavender)
             }
         }
         .glassCard()

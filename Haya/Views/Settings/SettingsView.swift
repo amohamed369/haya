@@ -189,7 +189,7 @@ struct SettingsView: View {
 
             // Rescan button
             Button {
-                // TODO: Trigger full rescan
+                pipeline.rescanAll(batchSize: appState.batchSize)
             } label: {
                 HStack {
                     Image(systemName: "arrow.clockwise")
@@ -390,7 +390,7 @@ struct SettingsView: View {
                 debugRow("Pipeline", value: pipeline.loadingStatus)
                 debugRow("VLM Status", value: vlmStatusText)
                 debugRow("People Enrolled", value: "\(enrollments.count)")
-                debugRow("Photos Scanned", value: "0") // TODO: from ScanEngine
+                debugRow("Photos Scanned", value: "\(pipeline.scanProgress.processed)")
                 debugRow("Disk Free", value: VLMService.availableDiskSpace)
             }
         }

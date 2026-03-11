@@ -338,6 +338,7 @@ struct AddPersonSheet: View {
                             currentFacePickIndex = nil
                         }
                     )
+                    .id(idx)
                 }
             }
         }
