@@ -329,46 +329,43 @@ Originally proposed a 3-layer cascade with a YOLO model trained specifically on 
 
 ---
 
-## Decision 6: VLM Choice — QWEN2.5-VL-3B (Colab POC) / SMOLVLM2-2.2B (iOS target)
+## Decision 6: VLM Choice — QWEN2.5-VL-3B (iOS) / INTERNVL3.5-4B (Kaggle)
 
 ### What This Solves
 Which on-device Vision Language Model to run for the modesty assessment.
 
 ### Architecture
 ```
-Device RAM check at app launch:
-    ├─ ≥6GB RAM (iPhone 13+) → Load SmolVLM2-2.2B (4-bit quantized)
-    └─ <6GB RAM (iPhone 12)  → Load SmolVLM2-256M
+Kaggle/T4:   InternVL3.5-4B INT8 (POPE 88.9, MMMU 66.6, ~5GB VRAM)
+iPhone:      Qwen2.5-VL-3B-Instruct-4bit via mlx-swift-lm (83% Kaggle accuracy, 3.07GB)
 ```
 
-### SmolVLM2-2.2B (Default)
-- ~1.5-2GB RAM, ~1.2GB disk (4-bit quantized)
-- Best accuracy for nuanced modesty questions
-- Handles edge cases well (towel + shorts, cultural variations)
-- Needs iPhone 13 Pro+ (6GB RAM) realistically
-- Proven ecosystem: HuggingFace HuggingSnap app, MLX Swift framework
+### Qwen2.5-VL-3B-Instruct-4bit (iPhone — CURRENT)
+- Model ID: `mlx-community/Qwen2.5-VL-3B-Instruct-4bit`
+- ~3.07GB disk, fits in iPhone 6GB RAM
+- 83% accuracy in Kaggle testing (second best overall)
+- Natively supported in mlx-swift-lm `VLMTypeRegistry` (`qwen2_5_vl`)
+- Q_MODESTY 6-area checklist prompt, VERDICT last-line parser
+- System prompt: "You check Islamic modesty in photos. Focus ONLY on THIS person."
+- maxTokens=200, resize=448x448
 
-### SmolVLM2-256M (Fallback)
-- ~0.8GB RAM, ~500MB disk
-- Good enough for straightforward modesty questions
-- Runs on iPhone 12 (4GB RAM)
-- Same ecosystem as 2.2B — same code, different model file
+### CRITICAL: InternVL3 NOT Supported in mlx-swift-lm
+- mlx-community/InternVL3-2B-4bit exists (1.61GB) but InternVL architecture NOT in Swift VLMTypeRegistry
+- Supported architectures: qwen2_vl, qwen2_5_vl, qwen3_vl, paligemma, gemma3, idefics3, smolvlm, pixtral, mistral3
+- Python mlx-vlm DOES support InternVL3 but Swift framework does NOT
+- This makes Qwen2.5-VL the best available Swift-compatible VLM
 
-### Why SmolVLM2
-- **Proven on iOS** — HuggingSnap is a real shipping app
-- **HuggingFace ecosystem** — MLX Swift, CoreML conversion tools, community
-- **Size variants** — same architecture at different sizes, easy to swap
+### VLM Evolution (iOS app)
+1. SmolVLM2-2.2B: 61% accuracy, CoreML blocked → **Replaced**
+2. **Qwen2.5-VL-3B-Instruct-4bit**: 83% accuracy, mlx-swift-lm native → **CURRENT**
 
-### Options Considered
-| Option | Size (RAM) | Speed | Proven on iOS | Verdict |
-|--------|-----------|-------|--------------|---------|
-| SmolVLM2-256M | 0.8GB | Fast | Yes (HuggingSnap) | Fallback for older devices |
-| SmolVLM2-500M | 1.5GB | Medium | Yes | Middle ground, skipped |
-| **SmolVLM2-2.2B** | 1.5-2GB | Slower | Yes (ecosystem) | **DEFAULT** |
-| FastVLM-0.5B (Apple) | 1.5-2GB | Fast (Apple optimized) | Research paper only | Too risky for v1 |
-| Moondream2 | ~2GB | Medium | No proven iOS deployment | Rejected |
-| Qwen2-VL | Large | Slow | No proven iOS deployment | Rejected |
-| PaliGemma | Large | Slow | No proven iOS deployment | Rejected |
+### Options Considered (iOS)
+| Option | Size | Accuracy | Swift Support | Verdict |
+|--------|------|----------|--------------|---------|
+| SmolVLM2-2.2B | 1.2GB | 61% | Yes (smolvlm) | Replaced — too weak |
+| InternVL3-2B-4bit | 1.61GB | Unknown | NO (not in registry) | **BLOCKED** |
+| **Qwen2.5-VL-3B-4bit** | 3.07GB | 83% | Yes (qwen2_5_vl) | **CHOSEN** |
+| Qwen3-VL-4B-4bit | ~4GB | TBD | Yes (qwen3_vl) | Tight on 6GB RAM |
 
 ### Why NOT Cloud API (GPT-4V, Claude Vision, Gemini)
 - **Privacy**: Sending modesty photos to third-party servers contradicts app's purpose
@@ -611,7 +608,7 @@ STEP 3: FILTER CHECK ("should this be hidden?")
 │ ├─ Lots of hair visible → HIDE (skip VLM)        │
 │ └─ Otherwise → Layer 2                           │
 │                                                   │
-│ Layer 2: VLM SmolVLM2-2.2B/256M (200-500ms)     │
+│ Layer 2: VLM Qwen2.5-VL-3B-4bit (200-500ms)      │
 │ → Custom or default prompt with user corrections  │
 │ ├─ Confident match → HIDE                        │
 │ ├─ Confident no match → KEEP                     │
@@ -637,10 +634,8 @@ STEP 4: FEEDBACK LOOP (ongoing)
 | InsightFace ArcFace | ~85MB FP16 | Face embeddings |
 | CLIP-ReID ViT-B/16 (INT4) | ~45-50MB | Body re-identification |
 | MediaPipe Hair Seg | ~1MB | Hair pre-filter |
-| SmolVLM2-2.2B (4-bit) | ~1.2GB | Modesty assessment |
-| **Total** | **~1.35GB** | |
-
-SmolVLM2-256M fallback: ~550MB total instead.
+| Qwen2.5-VL-3B (4-bit) | ~3.07GB | Modesty assessment |
+| **Total** | **~3.2GB** | |
 
 ---
 
@@ -750,7 +745,7 @@ All ML runs on the iPhone's Neural Engine / GPU. No server calls. Photos never l
 | Body Re-ID | CLIP-ReID ViT-B/16 (CoreML INT4) |
 | Hair Segmentation | MediaPipe Hair Seg (TFLite → CoreML) |
 | VLM (Colab/Kaggle POC) | Qwen3-VL-2B-Instruct (4-bit NF4, 1Q combined) |
-| VLM (iOS target) | Qwen3-VL-2B GGUF Q4_K_M via llama.cpp |
+| VLM (iOS target) | Qwen2.5-VL-3B-Instruct-4bit via mlx-swift-lm |
 | NSFW Pre-filter | Apple SensitiveContentAnalysis (iOS 17+) |
 | On-Device Learning | VLM prompt tuning + threshold adjustment |
 | Local Storage | CoreData or SQLite |
