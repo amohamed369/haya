@@ -38,7 +38,7 @@ actor PersonIdentifier {
 
     func loadModels() async throws {
         let config = MLModelConfiguration()
-        config.computeUnits = .all
+        config.computeUnits = .cpuAndGPU // ANE compiler crashes on iOS 26.3 beta
 
         // Load each model independently — one failure shouldn't block the other
         do {

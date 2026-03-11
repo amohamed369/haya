@@ -54,7 +54,7 @@ actor PersonDetector {
 
     func loadModels() async throws {
         let config = MLModelConfiguration()
-        config.computeUnits = .all
+        config.computeUnits = .cpuAndGPU // ANE compiler crashes on iOS 26.3 beta
         do {
             let url = try Self.modelURL(name: "YOLO11n")
             let yolo = try MLModel(contentsOf: url, configuration: config)
