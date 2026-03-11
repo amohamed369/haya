@@ -51,7 +51,7 @@ struct PhotoDetailView: View {
                         HStack {
                             if isProcessing {
                                 ProgressView()
-                                    .tint(Color(hex: "2A3420"))
+                                    .tint(Haya.Colors.fgOnOrange)
                                     .scaleEffect(0.8)
                                 Text("Processing...")
                             } else {
@@ -72,7 +72,7 @@ struct PhotoDetailView: View {
                         .padding(.horizontal, Haya.Spacing.lg)
                 }
 
-                Spacer().frame(height: 100)
+                Spacer().frame(height: Haya.Spacing.tabClearance)
             }
             .padding(.top, Haya.Spacing.md)
         }
@@ -124,7 +124,7 @@ struct PhotoDetailView: View {
                     )
             }
         }
-        .shadow(color: Haya.Shadows.soft, radius: 16, y: 8)
+        .hayaShadowLg()
     }
 
     private var displayImage: UIImage? {
@@ -190,7 +190,7 @@ struct DetectionOverlay: View {
                     .background(
                         Rectangle().fill(borderColor(for: person).opacity(0.08))
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: Haya.Radius.xs))
                     .frame(width: rect.width, height: rect.height)
                     .position(x: rect.midX, y: rect.midY)
                     .overlay(alignment: .topLeading) {

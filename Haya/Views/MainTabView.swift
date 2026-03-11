@@ -29,7 +29,7 @@ struct MainTabView: View {
                         PhotoGridView(showHidden: $showHidden)
                     }
                 }
-                .transition(.opacity.animation(.easeOut(duration: 0.15)))
+                .transition(.opacity.animation(Haya.Motion.fade))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -67,8 +67,7 @@ struct MainTabView: View {
                                 lineWidth: 1
                             )
                     )
-                    .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1, y: 2)
-                    .shadow(color: Haya.Shadows.soft, radius: 4, y: 2)
+                    .hayaShadowSm()
             }
             .padding(.trailing, 20)
             .padding(.top, 8)

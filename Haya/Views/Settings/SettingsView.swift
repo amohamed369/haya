@@ -44,7 +44,7 @@ struct SettingsView: View {
                 dangerZone
                     .padding(.horizontal, Haya.Spacing.lg)
 
-                Spacer().frame(height: 120)
+                Spacer().frame(height: Haya.Spacing.tabClearance)
             }
         }
         .task {

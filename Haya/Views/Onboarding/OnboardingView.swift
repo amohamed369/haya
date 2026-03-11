@@ -33,7 +33,7 @@ struct OnboardingView: View {
         }
         .sageBackground()
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.15)) {
+            withAnimation(Haya.Motion.entrance.delay(0.15)) {
                 animateIn = true
             }
         }
@@ -55,12 +55,11 @@ struct OnboardingView: View {
                             Circle()
                                 .strokeBorder(Color.white.opacity(0.18), lineWidth: 1.5)
                         )
-                        .shadow(color: Haya.Shadows.cardDrop, radius: 2, x: 2, y: 3)
-                        .shadow(color: Haya.Shadows.soft, radius: 8, y: 4)
+                        .hayaShadowMd()
 
                     Image(systemName: "eye.slash.fill")
                         .font(.system(size: 40, weight: .medium))
-                        .foregroundStyle(Color(hex: "3F4F32"))
+                        .foregroundStyle(Haya.Colors.fgOnOrangeSoft)
                 }
                 .scaleEffect(animateIn ? 1 : 0.6)
                 .opacity(animateIn ? 1 : 0)
@@ -92,7 +91,7 @@ struct OnboardingView: View {
             Spacer()
 
             Button("Get Started") {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                withAnimation(Haya.Motion.standard) {
                     currentStep = .photoAccess
                 }
             }
@@ -150,7 +149,7 @@ struct OnboardingView: View {
                     Task {
                         let status = await appState.requestPhotoAccess()
                         if status == .authorized || status == .limited {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            withAnimation(Haya.Motion.standard) {
                                 currentStep = .personSetup
                             }
                         }

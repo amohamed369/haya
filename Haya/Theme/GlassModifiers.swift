@@ -46,16 +46,29 @@ struct GlassCard: ViewModifier {
                         lineWidth: 1
                     )
             )
-            // Crisp offset shadow (neobrutalist depth)
-            .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1.5, y: 2.5)
-            // Soft ambient shadow
-            .shadow(color: Haya.Shadows.soft, radius: 10, x: 0, y: 5)
+            .hayaShadowMd()
     }
 }
 
 extension View {
     func glassCard(padding: CGFloat = 24, radius: CGFloat = Haya.Radius.lg) -> some View {
         modifier(GlassCard(padding: padding, radius: radius))
+    }
+
+    // MARK: - Shadow Presets
+
+    func hayaShadowSm() -> some View {
+        self.shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1, y: 2)
+            .shadow(color: Haya.Shadows.soft, radius: 4, y: 2)
+    }
+
+    func hayaShadowMd() -> some View {
+        self.shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1.5, y: 2.5)
+            .shadow(color: Haya.Shadows.soft, radius: 8, y: 4)
+    }
+
+    func hayaShadowLg() -> some View {
+        self.shadow(color: Haya.Shadows.soft, radius: 16, y: 8)
     }
 }
 
@@ -145,7 +158,7 @@ struct HayaPillButtonStyle: ButtonStyle {
                         lineWidth: isProminent ? 1 : 1.5
                     )
             )
-            .foregroundStyle(isProminent ? Color(hex: "2A3420") : Haya.Colors.textSage)
+            .foregroundStyle(isProminent ? Haya.Colors.fgOnOrange : Haya.Colors.textSage)
             // Crisp offset shadow
             .shadow(
                 color: isProminent
@@ -157,7 +170,7 @@ struct HayaPillButtonStyle: ButtonStyle {
             )
             // Translate down on press (neobrutalist push)
             .offset(y: pressed ? 2 : 0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.8), value: pressed)
+            .animation(Haya.Motion.press, value: pressed)
     }
 }
 
@@ -196,7 +209,7 @@ struct PillChip: View {
                             lineWidth: 1
                         )
                 )
-                .foregroundStyle(isActive ? Color(hex: "2A3420") : Haya.Colors.textSage)
+                .foregroundStyle(isActive ? Haya.Colors.fgOnOrange : Haya.Colors.textSage)
                 // Crisp offset shadow when active
                 .shadow(
                     color: isActive ? Haya.Shadows.cardDrop : .clear,
@@ -217,7 +230,7 @@ struct AvatarCircle: View {
     var body: some View {
         Text(String(name.prefix(1)).uppercased())
             .font(HayaFont.heading(size * 0.38, weight: .semibold))
-            .foregroundStyle(Color(hex: "3F4F32"))
+            .foregroundStyle(Haya.Colors.fgOnOrangeSoft)
             .frame(width: size, height: size)
             .background(
                 Circle()
@@ -227,8 +240,7 @@ struct AvatarCircle: View {
                 Circle()
                     .strokeBorder(Color.white.opacity(0.18), lineWidth: 1.5)
             )
-            .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 1, y: 2)
-            .shadow(color: Haya.Shadows.soft, radius: 4, y: 2)
+            .hayaShadowSm()
     }
 }
 
@@ -297,7 +309,7 @@ struct HayaTabBar: View {
         HStack {
             ForEach(0..<tabs.count, id: \.self) { index in
                 Button {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    withAnimation(Haya.Motion.quick) {
                         selectedTab = index
                     }
                 } label: {
@@ -349,7 +361,7 @@ struct HayaTabBar: View {
                     bottomTrailingRadius: 0,
                     topTrailingRadius: 20
                 )
-                .fill(Color(hex: "37442A").opacity(0.82))
+                .fill(Haya.Colors.tabBarBg.opacity(0.82))
             }
             .overlay(alignment: .top) {
                 // Gradient top border

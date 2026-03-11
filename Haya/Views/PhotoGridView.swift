@@ -64,7 +64,7 @@ struct PhotoGridView: View {
                         }
                     }
                     .padding(.horizontal, 3)
-                    .padding(.bottom, 100) // Space for tab bar
+                    .padding(.bottom, Haya.Spacing.tabClearance)
                 }
                 .sheet(item: Binding(
                     get: { selectedAsset.map { IdentifiableAsset(asset: $0) } },
@@ -164,8 +164,7 @@ struct PhotoThumbnailView: View {
                         .frame(width: geo.size.width, height: geo.size.width)
                         .clipped()
                 } else {
-                    Rectangle()
-                        .fill(Haya.Colors.bgDeep)
+                    SkeletonGridCell()
                 }
 
                 // Hidden overlay
@@ -182,7 +181,7 @@ struct PhotoThumbnailView: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.width)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .clipShape(RoundedRectangle(cornerRadius: Haya.Radius.xxs))
         }
         .aspectRatio(1, contentMode: .fit)
         .task {

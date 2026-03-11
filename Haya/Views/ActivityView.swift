@@ -45,7 +45,7 @@ struct ActivityView: View {
                 liveLogCard
                     .padding(.horizontal, Haya.Spacing.lg)
 
-                Spacer().frame(height: 100)
+                Spacer().frame(height: Haya.Spacing.tabClearance)
             }
         }
         .overlay(alignment: .top) {
@@ -57,7 +57,7 @@ struct ActivityView: View {
                     .padding(.vertical, 10)
                     .background(Capsule().fill(Haya.Colors.bgDeep))
                     .overlay(Capsule().strokeBorder(Haya.Colors.glassBorder, lineWidth: 1))
-                    .shadow(color: Haya.Shadows.soft, radius: 8, y: 4)
+                    .hayaShadowMd()
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .padding(.top, Haya.Spacing.md)
             }
@@ -226,7 +226,7 @@ struct ActivityView: View {
                 .foregroundStyle(color)
                 .frame(width: 36, height: 36)
                 .background(
-                    RoundedRectangle(cornerRadius: 10).fill(color.opacity(0.12))
+                    RoundedRectangle(cornerRadius: Haya.Radius.sm).fill(color.opacity(0.12))
                 )
 
             VStack(alignment: .leading, spacing: 2) {
@@ -294,7 +294,7 @@ struct ActivityView: View {
 
                 Button {
                     UIPasteboard.general.string = logStore.formatted()
-                    withAnimation(.spring(response: 0.3)) { copiedToast = true }
+                    withAnimation(Haya.Motion.quick) { copiedToast = true }
                     Task {
                         try? await Task.sleep(for: .seconds(2))
                         withAnimation { copiedToast = false }
@@ -359,11 +359,11 @@ struct ActivityView: View {
     private func filterPill(_ label: String, level: LogStore.Level?) -> some View {
         let isActive = logFilter == level
         return Button {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { logFilter = level }
+            withAnimation(Haya.Motion.quick) { logFilter = level }
         } label: {
             Text(label)
                 .font(HayaFont.caption)
-                .foregroundStyle(isActive ? Color(hex: "3F4F32") : Haya.Colors.textSage)
+                .foregroundStyle(isActive ? Haya.Colors.fgOnOrangeSoft : Haya.Colors.textSage)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(
@@ -428,7 +428,7 @@ struct ActivityView: View {
         .padding(.vertical, 3)
         .padding(.horizontal, 8)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: Haya.Radius.xs)
                 .fill(entry.level == .error ? Haya.Colors.accentRose.opacity(0.08) :
                         entry.level == .warning ? Haya.Colors.accentYellow.opacity(0.06) :
                         Color.clear)

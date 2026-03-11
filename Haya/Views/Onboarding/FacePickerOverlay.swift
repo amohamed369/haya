@@ -103,7 +103,7 @@ struct FacePickerOverlay: View {
                 .frame(width: w, height: h)
                 .position(x: x + w / 2, y: y + h / 2)
                 .onTapGesture {
-                    withAnimation(.spring(response: 0.3)) {
+                    withAnimation(Haya.Motion.quick) {
                         selectedIndex = index
                     }
                 }

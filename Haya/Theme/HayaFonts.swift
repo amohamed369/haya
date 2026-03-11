@@ -7,7 +7,7 @@ enum HayaFont {
     // MARK: - Font Names
 
     private static let serifFamily = "Fraunces"
-    private static let sansFamily = "DMSans"
+    private static let sansFamily = "DM Sans"
 
     // MARK: - Heading (Fraunces serif)
 

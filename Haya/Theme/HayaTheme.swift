@@ -10,7 +10,6 @@ enum Haya {
 
     enum Colors {
         // Backgrounds
-        static let bgOuter = Color(hex: "E8EDDF")
         static let bgPrimaryDark = Color(hex: "4A5A3A")
         static let bgPrimaryMid = Color(hex: "5A6B4A")
         static let bgPrimaryLight = Color(hex: "6B7D5A")
@@ -27,7 +26,6 @@ enum Haya {
 
         // Text
         static let textCream = Color(hex: "F5F0E8")
-        static let textCreamSoft = Color(hex: "F5F0E8").opacity(0.8)
         static let textSage = Color(hex: "B5C4A0")
         static let textSageDim = Color(hex: "8A9A72")
 
@@ -35,17 +33,21 @@ enum Haya {
         static let glassBg = Color.white.opacity(0.08)
         static let glassBgWarm = Color(hex: "FFF5E6").opacity(0.10)
         static let glassBorder = Color.white.opacity(0.12)
-        static let glassBorderWarm = Color(hex: "FFF5E6").opacity(0.18)
 
         // Status
         static let statusHide = Color(hex: "E85A3A")
-        static let statusKeep = accentTeal
-        static let statusUnknown = accentLavender
+
+        // Foreground on orange surfaces
+        static let fgOnOrange = Color(hex: "2A3420")
+        static let fgOnOrangeSoft = Color(hex: "3F4F32")
+        static let tabBarBg = Color(hex: "37442A")
     }
 
     // MARK: Radii
 
     enum Radius {
+        static let xxs: CGFloat = 4
+        static let xs: CGFloat = 6
         static let sm: CGFloat = 12
         static let md: CGFloat = 18
         static let lg: CGFloat = 24
@@ -61,15 +63,25 @@ enum Haya {
         static let lg: CGFloat = 24
         static let xl: CGFloat = 32
         static let xxl: CGFloat = 48
+        static let tabClearance: CGFloat = 100
     }
 
     // MARK: Shadows
 
     enum Shadows {
         static let soft = Color(hex: "1A2410").opacity(0.20)
-        static let glowOrange = Color(hex: "E8863A").opacity(0.25)
         /// Crisp directional shadow for neobrutalist depth
         static let cardDrop = Color(hex: "1A2410").opacity(0.40)
+    }
+
+    // MARK: Animation Presets
+
+    enum Motion {
+        static let press = Animation.spring(response: 0.2, dampingFraction: 0.8)
+        static let quick = Animation.spring(response: 0.25, dampingFraction: 0.8)
+        static let standard = Animation.spring(response: 0.35, dampingFraction: 0.85)
+        static let entrance = Animation.spring(response: 0.6, dampingFraction: 0.8)
+        static let fade = Animation.easeOut(duration: 0.15)
     }
 
     // MARK: Gradients
@@ -98,15 +110,6 @@ enum Haya {
             endPoint: .bottomTrailing
         )
 
-        static let warmOverlay = LinearGradient(
-            colors: [
-                Color(hex: "28321E").opacity(0.92),
-                Color(hex: "28321E").opacity(0.6),
-                Color.clear
-            ],
-            startPoint: .bottom,
-            endPoint: .top
-        )
     }
 }
 

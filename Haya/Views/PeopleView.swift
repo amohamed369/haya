@@ -43,7 +43,7 @@ struct PeopleView: View {
                         }
                     }
                     .padding(.horizontal, Haya.Spacing.lg)
-                    .padding(.bottom, 120) // Tab bar space
+                    .padding(.bottom, Haya.Spacing.tabClearance)
                 }
             }
         }
@@ -54,7 +54,7 @@ struct PeopleView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(Color(hex: "2A3420"))
+                    .foregroundStyle(Haya.Colors.fgOnOrange)
                     .frame(width: 56, height: 56)
                     .background(
                         Circle().fill(Haya.Gradients.orangeCTA)
@@ -70,11 +70,10 @@ struct PeopleView: View {
                                 lineWidth: 1
                             )
                     )
-                    .shadow(color: Haya.Shadows.cardDrop, radius: 1, x: 2, y: 3)
-                    .shadow(color: Haya.Shadows.soft, radius: 6, y: 3)
+                    .hayaShadowMd()
             }
             .padding(.trailing, Haya.Spacing.lg)
-            .padding(.bottom, 110)
+            .padding(.bottom, Haya.Spacing.tabClearance + 10)
             .disabled(!pipeline.isReady)
         }
         .sheet(isPresented: $showNewEnrollment) {
