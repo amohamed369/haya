@@ -19,7 +19,7 @@ struct ModestyAssessment {
 /// Creates a fresh ChatSession per assessment to avoid context contamination.
 @MainActor
 class VLMService {
-    private var modelContainer: ModelContainer?
+    private var modelContext: ModelContext?
     private let ciContext = CIContext()
     private var _isLoading = false
 
@@ -38,27 +38,27 @@ class VLMService {
 
     /// Load the VLM model. Downloads from HuggingFace on first launch.
     func loadModel() async throws {
-        guard modelContainer == nil, !_isLoading else { return }
+        guard modelContext == nil, !_isLoading else { return }
         _isLoading = true
         defer { _isLoading = false }
 
         MLX.GPU.set(cacheLimit: 512 * 1024 * 1024)
 
         let loaded = try await MLXLMCommon.loadModel(id: modelID)
-        self.modelContainer = loaded
+        self.modelContext = loaded
     }
 
     /// Assess whether a person in the image is modestly dressed.
     /// Creates a fresh ChatSession per call — no context leaks between photos.
     func assessModesty(personCrop: CIImage, customPrompt: String? = nil) async throws -> ModestyAssessment {
-        guard let container = modelContainer else {
+        guard let context = modelContext else {
             throw VLMError.modelNotLoaded
         }
 
         // Fresh session per assessment — Context7 confirms this is the idiomatic pattern:
         // "If you need a one-shot prompt/response simply create a ChatSession, evaluate the prompt and discard."
         let session = ChatSession(
-            container,
+            context,
             generateParameters: GenerateParameters(maxTokens: 60),
             processing: UserInput.Processing(resize: CGSize(width: 384, height: 384))
         )
@@ -78,11 +78,11 @@ class VLMService {
 
     /// Release the model to free memory.
     func unload() {
-        modelContainer = nil
+        modelContext = nil
         MLX.GPU.set(cacheLimit: 0)
     }
 
-    var isLoaded: Bool { modelContainer != nil }
+    var isLoaded: Bool { modelContext != nil }
     var currentModelID: String { modelID }
 
     // MARK: - Prompt
