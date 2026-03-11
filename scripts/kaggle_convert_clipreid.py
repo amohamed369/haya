@@ -96,7 +96,13 @@ class CLIPReIDImageEncoder(nn.Module):
         super().__init__()
         self.model = model
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        feat = self.model(x, get_image=True)
+        # In eval mode, build_transformer.forward(x) returns image features
+        # It may return a tuple (feat, feat_proj) — we want the projected 512-dim
+        out = self.model(x)
+        if isinstance(out, (tuple, list)):
+            feat = out[-1]  # projected features (512-dim)
+        else:
+            feat = out
         feat = feat / (feat.norm(dim=-1, keepdim=True) + 1e-8)
         return feat
 
