@@ -10,7 +10,7 @@ Steps:
 4. Download the output: CLIPReID.mlpackage.zip (~45-50MB)
 5. Give the zip to Claude to add to Haya/Resources/
 
-Output: CLIPReID.mlpackage (INT4 quantized, ~45-50MB)
+Output: CLIPReID.mlpackage (INT4 quantized, ~45-50MB, iOS 18+)
 Input spec: 256x128 RGB image, mean/std=[0.5,0.5,0.5]
 Output spec: 512-dim L2-normalized embedding
 """
@@ -180,7 +180,7 @@ mlmodel = ct.convert(
     )],
     outputs=[ct.TensorType(name="embedding")],
     convert_to="mlprogram",
-    minimum_deployment_target=ct.target.iOS17,
+    minimum_deployment_target=ct.target.iOS18,
     compute_precision=ct.precision.FLOAT16,
 )
 mlmodel.author = "Haya"
