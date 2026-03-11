@@ -202,7 +202,7 @@ try:
     )
     op_config = OpLinearQuantizerConfig(
         mode="linear_symmetric", dtype="int4",
-        granularity="per_block", block_size=32,
+        granularity="per_channel",
     )
     config = OptimizationConfig(global_config=op_config)
     mlmodel_int4 = linear_quantize_weights(mlmodel, config=config)
