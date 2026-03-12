@@ -24,10 +24,6 @@ struct SettingsView: View {
                 .padding(.horizontal, Haya.Spacing.lg)
                 .padding(.top, Haya.Spacing.md)
 
-                // Filter Defaults
-                filterDefaultsSection
-                    .padding(.horizontal, Haya.Spacing.lg)
-
                 // Processing
                 processingSection
                     .padding(.horizontal, Haya.Spacing.lg)
@@ -59,7 +55,11 @@ struct SettingsView: View {
             Button("Reset", role: .destructive) {
                 Task {
                     for enrollment in enrollments {
-                        try? await pipeline.identifier.removeEnrollment(id: enrollment.id)
+                        do {
+                            try await pipeline.identifier.removeEnrollment(id: enrollment.id)
+                        } catch {
+                            LogStore.shared.log(.error, "Settings", "Failed to remove enrollment \(enrollment.name): \(error.localizedDescription)")
+                        }
                     }
                     enrollments = []
                     appState.hasCompletedOnboarding = false
@@ -70,81 +70,12 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Filter Defaults
-
-    private var filterDefaultsSection: some View {
-        VStack(alignment: .leading, spacing: Haya.Spacing.md) {
-            SectionHeader(title: "Filter Defaults")
-
-            // Default prompt editor
-            VStack(alignment: .leading, spacing: Haya.Spacing.sm) {
-                Text("Default Filter Prompt")
-                    .font(HayaFont.label)
-                    .foregroundStyle(Haya.Colors.textSage)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
-
-                TextEditor(text: $appState.defaultFilterPrompt)
-                    .font(HayaFont.caption)
-                    .foregroundStyle(Haya.Colors.textCream)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 120)
-                    .padding(Haya.Spacing.sm)
-                    .background(
-                        RoundedRectangle(cornerRadius: Haya.Radius.sm)
-                            .fill(Haya.Colors.glassBg)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Haya.Radius.sm)
-                            .strokeBorder(Haya.Colors.glassBorder, lineWidth: 1)
-                    )
-            }
-
-            // Sensitivity slider
-            VStack(alignment: .leading, spacing: Haya.Spacing.sm) {
-                HStack {
-                    Text("Sensitivity")
-                        .font(HayaFont.label)
-                        .foregroundStyle(Haya.Colors.textSage)
-                        .textCase(.uppercase)
-                        .tracking(0.5)
-                    Spacer()
-                    Text(sensitivityLabel)
-                        .font(HayaFont.caption)
-                        .foregroundStyle(Haya.Colors.accentOrange)
-                }
-
-                Slider(value: $appState.globalSensitivity, in: 0...1, step: 0.1)
-                    .tint(Haya.Colors.accentOrange)
-
-                HStack {
-                    Text("Lenient")
-                        .font(HayaFont.caption2)
-                        .foregroundStyle(Haya.Colors.textSageDim)
-                    Spacer()
-                    Text("Strict")
-                        .font(HayaFont.caption2)
-                        .foregroundStyle(Haya.Colors.textSageDim)
-                }
-            }
-        }
-        .glassCard()
-    }
-
     private var vlmStatusText: String {
         switch pipeline.vlmService.downloadState {
         case .notDownloaded: return "Not downloaded"
         case .downloading(let p): return "Downloading \(Int(p * 100))%"
         case .ready: return "Ready"
         case .error: return "Error"
-        }
-    }
-
-    private var sensitivityLabel: String {
-        switch appState.globalSensitivity {
-        case 0..<0.3: return "Lenient"
-        case 0.3..<0.7: return "Balanced"
-        default: return "Strict"
         }
     }
 

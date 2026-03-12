@@ -212,7 +212,7 @@ struct ActivityView: View {
             VStack(spacing: Haya.Spacing.sm) {
                 stageRow(icon: "person.crop.rectangle", label: "Person Detection", detail: "Vision + YOLO11n", color: Haya.Colors.accentTeal)
                 stageRow(icon: "person.crop.circle", label: "Person Identification", detail: "ArcFace + CLIP-ReID", color: Haya.Colors.accentLavender)
-                stageRow(icon: "scissors", label: "Hair Segmentation", detail: "MediaPipe pre-filter", color: Haya.Colors.accentYellow)
+                stageRow(icon: "scissors", label: "Hair Segmentation", detail: "Vision person segmentation", color: Haya.Colors.accentYellow)
                 stageRow(
                     icon: "brain", label: "Modesty Assessment",
                     detail: pipeline.vlmService.currentModelID.components(separatedBy: "/").last ?? "VLM",
@@ -321,10 +321,10 @@ struct ActivityView: View {
             // Filter pills
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Haya.Spacing.sm) {
-                    filterPill("All", level: nil)
-                    filterPill("Errors", level: .error)
-                    filterPill("Warnings", level: .warning)
-                    filterPill("Info", level: .info)
+                    PillChip(label: "All", isActive: logFilter == nil) { withAnimation(Haya.Motion.quick) { logFilter = nil } }
+                    PillChip(label: "Errors", isActive: logFilter == .error) { withAnimation(Haya.Motion.quick) { logFilter = .error } }
+                    PillChip(label: "Warnings", isActive: logFilter == .warning) { withAnimation(Haya.Motion.quick) { logFilter = .warning } }
+                    PillChip(label: "Info", isActive: logFilter == .info) { withAnimation(Haya.Motion.quick) { logFilter = .info } }
                 }
             }
 
@@ -358,36 +358,6 @@ struct ActivityView: View {
             }
         }
         .glassCard()
-    }
-
-    private func filterPill(_ label: String, level: LogStore.Level?) -> some View {
-        let isActive = logFilter == level
-        return Button {
-            withAnimation(Haya.Motion.quick) { logFilter = level }
-        } label: {
-            Text(label)
-                .font(HayaFont.caption)
-                .foregroundStyle(isActive ? Haya.Colors.fgOnOrangeSoft : Haya.Colors.textSage)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule().fill(isActive ? Haya.Colors.accentOrange : Haya.Colors.glassBg)
-                )
-                .overlay(
-                    Capsule().strokeBorder(
-                        isActive
-                            ? AnyShapeStyle(Color.white.opacity(0.15))
-                            : AnyShapeStyle(Haya.Colors.glassBorder),
-                        lineWidth: 1
-                    )
-                )
-                .compositingGroup()
-                .shadow(
-                    color: isActive ? Haya.Shadows.cardDrop : .clear,
-                    radius: 0.5, x: 1, y: 2
-                )
-        }
-        .buttonStyle(.plain)
     }
 
     private static let logTimeFormatter: DateFormatter = {

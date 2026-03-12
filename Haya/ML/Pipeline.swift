@@ -7,14 +7,14 @@ import os
 private let logger = Logger(subsystem: "com.haya.app", category: "Pipeline")
 
 /// Per-person filter mode.
-enum FilterMode: String, Codable, CaseIterable {
+enum FilterMode: String, Codable, CaseIterable, Sendable {
     case defaultFilter = "default"   // Hair seg + VLM check
     case alwaysHide = "always_hide"  // Always hide this person
     case custom = "custom"           // Custom VLM prompt per person
 }
 
 /// Result of processing a single detected person through the pipeline.
-struct PersonFilterResult: Identifiable {
+struct PersonFilterResult: Identifiable, @unchecked Sendable {
     let id = UUID()
     let person: DetectedPerson
     let identification: IdentificationResult?
@@ -24,7 +24,7 @@ struct PersonFilterResult: Identifiable {
     let decisionReason: String
 }
 
-enum FilterDecision: Equatable {
+enum FilterDecision: Equatable, Sendable {
     case keep           // Show the photo
     case hide           // Hide the photo
     case unknown        // Could not determine (no enrolled person matched)
@@ -32,14 +32,14 @@ enum FilterDecision: Equatable {
 }
 
 /// Full result of processing a photo through the pipeline.
-struct PhotoFilterResult {
+struct PhotoFilterResult: @unchecked Sendable {
     let asset: PHAsset?
     let personResults: [PersonFilterResult]
     let overallDecision: FilterDecision
     let processingTimeMs: Int
 }
 
-/// Orchestrates the full ML pipeline: Detect → Identify → Filter.
+/// Orchestrates the full ML pipeline: Detect → Identify → Hair Seg → VLM → Filter Decision.
 @MainActor
 class Pipeline: ObservableObject {
     let detector = PersonDetector()
@@ -297,7 +297,7 @@ class Pipeline: ObservableObject {
         let reason: String
         if let a = assessment {
             decision = a.isModest ? .keep : .hide
-            reason = "VLM: \(a.isModest ? "modest" : "not modest") (\(a.confidence)) — \(a.reason)"
+            reason = "VLM: \(a.isModest ? "modest" : "not modest") (\(a.confidence.rawValue)) — \(a.reason)"
         } else {
             // VLM failure → fail-safe to hide (privacy app)
             decision = .hide

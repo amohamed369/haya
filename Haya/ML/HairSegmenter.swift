@@ -3,12 +3,12 @@ import CoreImage
 import Vision
 
 /// Result of hair segmentation analysis.
-struct HairSegmentationResult {
+struct HairSegmentationResult: Sendable {
     let hairRatio: Float
-    let hairVisible: Bool
-    let skipVLM: Bool
-
     static let hairThreshold: Float = 0.15
+
+    var hairVisible: Bool { hairRatio > Self.hairThreshold }
+    var skipVLM: Bool { hairVisible }
 }
 
 /// Hair segmentation to pre-filter before VLM.
@@ -47,22 +47,17 @@ actor HairSegmenter {
                 height: bodyRect.height * 0.25
             ).intersection(image.extent)
         } else {
-            return HairSegmentationResult(hairRatio: 0, hairVisible: false, skipVLM: false)
+            return HairSegmentationResult(hairRatio: 0)
         }
 
         guard headRect.width > 10, headRect.height > 10 else {
-            return HairSegmentationResult(hairRatio: 0, hairVisible: false, skipVLM: false)
+            return HairSegmentationResult(hairRatio: 0)
         }
 
         let headCrop = image.cropped(to: headRect)
         let hairRatio = try await estimateHairRatio(headCrop: headCrop)
 
-        let visible = hairRatio > HairSegmentationResult.hairThreshold
-        return HairSegmentationResult(
-            hairRatio: hairRatio,
-            hairVisible: visible,
-            skipVLM: visible
-        )
+        return HairSegmentationResult(hairRatio: hairRatio)
     }
 
     private func estimateHairRatio(headCrop: CIImage) async throws -> Float {
@@ -73,6 +68,7 @@ actor HairSegmenter {
         do {
             try handler.perform([segRequest])
         } catch {
+            await LogStore.shared.log(.warning, "HairSeg", "Person segmentation failed: \(error.localizedDescription)")
             return 0
         }
 

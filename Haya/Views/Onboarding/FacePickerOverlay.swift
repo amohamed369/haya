@@ -12,6 +12,7 @@ struct FacePickerOverlay: View {
     @State private var faceRects: [CGRect] = []
     @State private var selectedIndex: Int?
     @State private var isDetecting = true
+    @State private var detectionError: String?
 
     var body: some View {
         VStack(spacing: Haya.Spacing.md) {
@@ -41,6 +42,13 @@ struct FacePickerOverlay: View {
                     }
                 }
                 .padding(.horizontal, Haya.Spacing.md)
+
+            if let error = detectionError {
+                Text(error)
+                    .font(HayaFont.caption)
+                    .foregroundStyle(Haya.Colors.accentRose)
+                    .padding(.horizontal, Haya.Spacing.lg)
+            }
 
             // Actions
             HStack(spacing: Haya.Spacing.md) {
@@ -113,11 +121,13 @@ struct FacePickerOverlay: View {
 
         do {
             try handler.perform([request])
-            if let results = request.results {
+            if let results = request.results, !results.isEmpty {
                 faceRects = results.map { $0.boundingBox }
+            } else {
+                detectionError = "No faces detected. Try a different photo."
             }
         } catch {
-            // Detection failed — no faces to show
+            detectionError = "Could not detect faces. Try a different photo."
         }
 
         isDetecting = false

@@ -9,9 +9,13 @@ import os
 private let logger = Logger(subsystem: "com.haya.app", category: "VLMService")
 
 /// VLM-based modesty assessment result.
-struct ModestyAssessment {
+struct ModestyAssessment: Sendable {
+    enum ConfidenceLevel: String, Sendable {
+        case high, medium, low
+    }
+
     let isModest: Bool
-    let confidence: String  // "high", "medium", "low"
+    let confidence: ConfidenceLevel
     let reason: String
     let rawResponse: String
 }
@@ -26,8 +30,8 @@ class VLMService: ObservableObject {
     /// Model ID — Qwen2.5-VL-3B (83% accuracy in Kaggle testing, natively supported in mlx-swift-lm).
     let modelID = "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"
 
-    /// Estimated model size in bytes (~1.8 GB for 3B 4-bit).
-    static let estimatedModelSizeBytes: Int64 = 1_800_000_000
+    /// Estimated model size in bytes (~3.07 GB for 3B 4-bit).
+    static let estimatedModelSizeBytes: Int64 = 3_070_000_000
 
     /// Download / load state machine.
     enum DownloadState: Equatable {
@@ -37,8 +41,13 @@ class VLMService: ObservableObject {
         case error(String)
     }
 
-    @Published var downloadState: DownloadState = .notDownloaded
-    @Published var downloadProgress: Double = 0
+    @Published private(set) var downloadState: DownloadState = .notDownloaded
+
+    /// Computed from downloadState — no duplicate state.
+    var downloadProgress: Double {
+        if case .downloading(let p) = downloadState { return p }
+        return downloadState == .ready ? 1.0 : 0.0
+    }
 
     init() {}
 
@@ -60,7 +69,6 @@ class VLMService: ObservableObject {
         }
 
         downloadState = .downloading(progress: 0)
-        downloadProgress = 0
         LogStore.shared.log(.info, "VLM", "Downloading \(modelID)...")
 
         do {
@@ -71,19 +79,15 @@ class VLMService: ObservableObject {
                 configuration: config
             ) { [weak self] progress in
                 Task { @MainActor in
-                    let fraction = progress.fractionCompleted
-                    self?.downloadProgress = fraction
-                    self?.downloadState = .downloading(progress: fraction)
+                    self?.downloadState = .downloading(progress: progress.fractionCompleted)
                 }
             }
 
             self.modelContainer = container
             downloadState = .ready
-            downloadProgress = 1.0
             LogStore.shared.log(.info, "VLM", "Model downloaded and loaded successfully")
         } catch {
             downloadState = .error(error.localizedDescription)
-            downloadProgress = 0
             LogStore.shared.log(.error, "VLM", "Download failed: \(error.localizedDescription)")
             logger.error("VLM download failed: \(error)")
         }
@@ -212,13 +216,13 @@ class VLMService: ObservableObject {
 
         // Extract confidence from response
         let upper = trimmed.uppercased()
-        let confidence: String
+        let confidence: ModestyAssessment.ConfidenceLevel
         if upper.contains("HIGH") {
-            confidence = "high"
+            confidence = .high
         } else if upper.contains("LOW") {
-            confidence = "low"
+            confidence = .low
         } else {
-            confidence = "medium"
+            confidence = .medium
         }
 
         let reason = lines.last ?? trimmed

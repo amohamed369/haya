@@ -6,7 +6,7 @@ import Foundation
 final class LogStore: ObservableObject {
     static let shared = LogStore()
 
-    @Published var entries: [LogEntry] = []
+    @Published private(set) var entries: [LogEntry] = []
 
     struct LogEntry: Identifiable {
         let id = UUID()

@@ -271,6 +271,46 @@ struct SectionHeader: View {
     }
 }
 
+// MARK: - FilterDecision Display
+
+extension FilterDecision {
+    var displayText: String {
+        switch self {
+        case .keep: return "KEEP"
+        case .hide: return "HIDE"
+        case .unknown: return "UNKNOWN"
+        case .error: return "ERROR"
+        }
+    }
+
+    var shortText: String {
+        switch self {
+        case .keep: return "KEEP"
+        case .hide: return "HIDE"
+        case .unknown: return "?"
+        case .error: return "ERR"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .keep: return "checkmark.circle.fill"
+        case .hide: return "eye.slash.fill"
+        case .unknown: return "questionmark.circle.fill"
+        case .error: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .keep: return Haya.Colors.accentGreen
+        case .hide: return Haya.Colors.statusHide
+        case .unknown: return Haya.Colors.accentYellow
+        case .error: return Haya.Colors.textSageDim
+        }
+    }
+}
+
 // MARK: - Status Badge
 
 /// Small rounded badge with color-matched border.

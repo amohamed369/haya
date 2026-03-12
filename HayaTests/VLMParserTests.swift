@@ -88,17 +88,17 @@ final class VLMParserTests: XCTestCase {
 
     func testConfidenceHigh() {
         let result = service.parseModestyResponse("VERDICT: YES, HIGH confidence")
-        XCTAssertEqual(result.confidence, "high")
+        XCTAssertEqual(result.confidence, .high)
     }
 
     func testConfidenceLow() {
         let result = service.parseModestyResponse("VERDICT: NO, LOW confidence")
-        XCTAssertEqual(result.confidence, "low")
+        XCTAssertEqual(result.confidence, .low)
     }
 
     func testConfidenceMedium() {
         let result = service.parseModestyResponse("VERDICT: YES")
-        XCTAssertEqual(result.confidence, "medium")
+        XCTAssertEqual(result.confidence, .medium)
     }
 
     // MARK: - Edge Cases

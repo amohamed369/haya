@@ -22,11 +22,11 @@ struct ResultsView: View {
 
     private var overallBadge: some View {
         HStack {
-            Image(systemName: overallIcon)
-                .foregroundStyle(overallColor)
-            Text(overallText)
+            Image(systemName: result.overallDecision.icon)
+                .foregroundStyle(result.overallDecision.color)
+            Text(result.overallDecision.displayText)
                 .font(HayaFont.headline)
-                .foregroundStyle(overallColor)
+                .foregroundStyle(result.overallDecision.color)
             Spacer()
             Text("\(result.processingTimeMs)ms")
                 .font(HayaFont.caption)
@@ -36,39 +36,12 @@ struct ResultsView: View {
         .padding(.vertical, Haya.Spacing.sm)
         .background(
             RoundedRectangle(cornerRadius: Haya.Radius.sm)
-                .fill(overallColor.opacity(0.12))
+                .fill(result.overallDecision.color.opacity(0.12))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Haya.Radius.sm)
-                .strokeBorder(overallColor.opacity(0.2), lineWidth: 1)
+                .strokeBorder(result.overallDecision.color.opacity(0.2), lineWidth: 1)
         )
-    }
-
-    private var overallIcon: String {
-        switch result.overallDecision {
-        case .hide: return "eye.slash.fill"
-        case .keep: return "checkmark.circle.fill"
-        case .unknown: return "questionmark.circle.fill"
-        case .error: return "exclamationmark.triangle.fill"
-        }
-    }
-
-    private var overallText: String {
-        switch result.overallDecision {
-        case .hide: return "HIDE"
-        case .keep: return "KEEP"
-        case .unknown: return "UNKNOWN"
-        case .error: return "ERROR"
-        }
-    }
-
-    private var overallColor: Color {
-        switch result.overallDecision {
-        case .hide: return Haya.Colors.statusHide
-        case .keep: return Haya.Colors.accentGreen
-        case .unknown: return Haya.Colors.accentYellow
-        case .error: return Haya.Colors.textSageDim
-        }
     }
 }
 
@@ -94,7 +67,7 @@ struct PersonResultCard: View {
 
                 Spacer()
 
-                StatusBadge(text: decisionText, color: decisionColor)
+                StatusBadge(text: result.decision.shortText, color: result.decision.color)
             }
 
             // Detection info
@@ -147,7 +120,7 @@ struct PersonResultCard: View {
                         Image(systemName: "brain")
                         Text("VLM: \(vlm.isModest ? "Modest" : "Not Modest")")
                             .foregroundStyle(vlm.isModest ? Haya.Colors.accentGreen : Haya.Colors.statusHide)
-                        Text("(\(vlm.confidence))")
+                        Text("(\(vlm.confidence.rawValue))")
                             .foregroundStyle(Haya.Colors.textSageDim)
                     }
                     .font(HayaFont.caption)
@@ -195,21 +168,4 @@ struct PersonResultCard: View {
         }
     }
 
-    private var decisionText: String {
-        switch result.decision {
-        case .keep: return "KEEP"
-        case .hide: return "HIDE"
-        case .unknown: return "?"
-        case .error: return "ERR"
-        }
-    }
-
-    private var decisionColor: Color {
-        switch result.decision {
-        case .keep: return Haya.Colors.accentGreen
-        case .hide: return Haya.Colors.statusHide
-        case .unknown: return Haya.Colors.accentYellow
-        case .error: return Haya.Colors.textSageDim
-        }
-    }
 }

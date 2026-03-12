@@ -7,7 +7,7 @@ import os
 private let logger = Logger(subsystem: "com.haya.app", category: "PersonIdentifier")
 
 /// Stored enrollment for a known person.
-struct PersonEnrollment: Codable, Identifiable {
+struct PersonEnrollment: Codable, Identifiable, Sendable {
     let id: String
     let name: String
     private(set) var faceCentroid: [Float]?
@@ -17,7 +17,7 @@ struct PersonEnrollment: Codable, Identifiable {
 }
 
 /// Result of identifying a detected person against enrolled people.
-struct IdentificationResult {
+struct IdentificationResult: Sendable {
     let enrollmentID: String?
     let name: String?
     let faceSimilarity: Float?

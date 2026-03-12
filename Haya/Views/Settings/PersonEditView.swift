@@ -17,6 +17,7 @@ struct PersonEditView: View {
     @State private var customPrompt: String = ""
     @State private var isSaving = false
     @State private var showDeleteConfirm = false
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -74,6 +75,11 @@ struct PersonEditView: View {
             }
         } message: {
             Text("This will remove \(enrollment.name) and all their enrollment data. This cannot be undone.")
+        }
+        .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
@@ -283,9 +289,13 @@ struct PersonEditView: View {
                 return CIImage(cgImage: cgImage)
             }
 
-            // Remove old enrollment and create new one with combined data
-            try? await pipeline.identifier.removeEnrollment(id: enrollment.id)
-            _ = try? await pipeline.identifier.enroll(name: name.trimmingCharacters(in: .whitespaces), images: ciImages)
+            do {
+                try await pipeline.identifier.removeEnrollment(id: enrollment.id)
+                _ = try await pipeline.identifier.enroll(name: name.trimmingCharacters(in: .whitespaces), images: ciImages)
+            } catch {
+                errorMessage = "Save failed: \(error.localizedDescription)"
+                return
+            }
         }
 
         onDismiss()
@@ -293,7 +303,12 @@ struct PersonEditView: View {
     }
 
     private func deletePerson() async {
-        try? await pipeline.identifier.removeEnrollment(id: enrollment.id)
+        do {
+            try await pipeline.identifier.removeEnrollment(id: enrollment.id)
+        } catch {
+            errorMessage = "Delete failed: \(error.localizedDescription)"
+            return
+        }
         onDismiss()
         dismiss()
     }

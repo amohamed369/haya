@@ -125,7 +125,7 @@ extension Color {
         case 6:
             (r, g, b) = ((int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
         case 8:
-            // ARGB
+            // ARGB (alpha ignored — uses RGB from lower 24 bits)
             (r, g, b) = ((int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
         default:
             (r, g, b) = (0, 0, 0)

@@ -9,6 +9,7 @@ struct PeopleView: View {
     @State private var enrollments: [PersonEnrollment] = []
     @State private var showNewEnrollment = false
     @State private var editingEnrollment: PersonEnrollment?
+    @State private var errorMessage: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -91,6 +92,11 @@ struct PeopleView: View {
         .task {
             await refreshEnrollments()
         }
+        .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private var emptyState: some View {
@@ -150,7 +156,11 @@ struct PeopleView: View {
         .contextMenu {
             Button(role: .destructive) {
                 Task {
-                    try? await pipeline.identifier.removeEnrollment(id: enrollment.id)
+                    do {
+                        try await pipeline.identifier.removeEnrollment(id: enrollment.id)
+                    } catch {
+                        errorMessage = "Failed to delete: \(error.localizedDescription)"
+                    }
                     await refreshEnrollments()
                 }
             } label: {

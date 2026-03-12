@@ -8,14 +8,14 @@ import os
 private let logger = Logger(subsystem: "com.haya.app", category: "PersonDetector")
 
 /// Source of the tight person crop box.
-enum PersonBoxSource {
+enum PersonBoxSource: Sendable {
     case instanceMask   // VNGeneratePersonInstanceMaskRequest (tightest, pixel-perfect, iOS 17+)
     case faceAnchored   // Estimated from face using anthropometric ratios
     case yoloRaw        // Raw YOLO bounding box
 }
 
 /// Result of detecting a person in an image.
-struct DetectedPerson: Identifiable {
+struct DetectedPerson: Identifiable, @unchecked Sendable {
     let id = UUID()
     /// Bounding box in normalized coordinates (top-left origin, 0-1 range).
     let boundingBox: CGRect

@@ -219,12 +219,7 @@ struct DetectionOverlay: View {
     }
 
     private func borderColor(for result: PersonFilterResult) -> Color {
-        switch result.decision {
-        case .keep: return Haya.Colors.accentGreen
-        case .hide: return Haya.Colors.statusHide
-        case .unknown: return Haya.Colors.accentYellow
-        case .error: return Haya.Colors.textSageDim
-        }
+        result.decision.color
     }
 
     private func labelText(for result: PersonFilterResult) -> String {
