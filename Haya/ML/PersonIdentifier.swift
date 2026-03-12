@@ -215,11 +215,21 @@ actor PersonIdentifier {
             }
         }
 
+        let faceCentroid = EmbeddingMath.computeCentroid(faceEmbeddings)
+        let bodyCentroid = EmbeddingMath.computeCentroid(bodyEmbeddings)
+
+        // At least one centroid required — without embeddings, matching will always fail silently
+        if faceCentroid == nil && bodyCentroid == nil {
+            throw NSError(domain: "com.haya.ml", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "No faces or bodies could be extracted from the provided photos. Try different photos with clearer faces."
+            ])
+        }
+
         let enrollment = PersonEnrollment(
             id: UUID().uuidString,
             name: name,
-            faceCentroid: EmbeddingMath.computeCentroid(faceEmbeddings),
-            bodyCentroid: EmbeddingMath.computeCentroid(bodyEmbeddings),
+            faceCentroid: faceCentroid,
+            bodyCentroid: bodyCentroid,
             faceEmbeddingCount: faceEmbeddings.count,
             bodyEmbeddingCount: bodyEmbeddings.count
         )
@@ -304,11 +314,19 @@ actor PersonIdentifier {
     }()
 
     private static func loadEnrollments() -> [PersonEnrollment] {
+        guard FileManager.default.fileExists(atPath: enrollmentsFile.path) else {
+            logger.info("No enrollments file — first launch")
+            return []
+        }
         do {
             let data = try Data(contentsOf: enrollmentsFile)
             return try JSONDecoder().decode([PersonEnrollment].self, from: data)
         } catch {
-            logger.info("No existing enrollments (or decode error): \(error)")
+            // File exists but decode failed — data corruption, not first launch
+            logger.error("Enrollment file corrupted: \(error)")
+            Task { @MainActor in
+                LogStore.shared.log(.error, "Identifier", "Enrollment data corrupted — enrollments lost. Re-enroll people in Settings.")
+            }
             return []
         }
     }

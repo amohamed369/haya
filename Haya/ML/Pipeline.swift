@@ -48,6 +48,7 @@ class Pipeline: ObservableObject {
     let vlmService = VLMService()
 
     @Published var isReady = false
+    @Published var detectorReady = false
     @Published var isEnrollReady = false
     @Published var isProcessing = false
     @Published var loadingStatus = "Not loaded"
@@ -62,6 +63,8 @@ class Pipeline: ObservableObject {
     @Published var scanResults: [String: PhotoFilterResult] = [:]
 
     private var cancellables = Set<AnyCancellable>()
+    private var scanListenerTask: Task<Void, Never>?
+    private var scanTask: Task<Void, Never>?
 
     init() {
         // Forward nested ObservableObject changes so SwiftUI re-renders
@@ -72,14 +75,19 @@ class Pipeline: ObservableObject {
 
     /// Start background scan and feed results back to published properties.
     func startBackgroundScan(batchSize: Int = 20) {
-        Task {
-            // Listen to progress stream
+        // Cancel any previous listener to prevent duplicate streams
+        scanListenerTask?.cancel()
+        scanTask?.cancel()
+
+        scanTask = Task {
             let stream = await scanEngine.progressStream
-            Task {
+            scanListenerTask = Task { [weak self] in
                 for await progress in stream {
-                    self.scanProgress = progress
-                    // Sync results snapshot
-                    self.scanResults = await scanEngine.currentResults
+                    guard !Task.isCancelled else { break }
+                    self?.scanProgress = progress
+                    if let results = await self?.scanEngine.currentResults {
+                        self?.scanResults = results
+                    }
                 }
             }
             await scanEngine.startScan(batchSize: batchSize)
@@ -92,7 +100,7 @@ class Pipeline: ObservableObject {
             await scanEngine.stopScan()
             await scanEngine.clearResults()
             scanResults = [:]
-            scanProgress = ScanProgress(total: 0, processed: 0, hidden: 0, kept: 0, errors: 0, isScanning: false)
+            scanProgress = ScanProgress.idle
             startBackgroundScan(batchSize: batchSize)
         }
     }
@@ -102,11 +110,12 @@ class Pipeline: ObservableObject {
     func loadModels() async {
         let log = LogStore.shared
 
-        // 1. Detector (YOLO)
+        // 1. Detector (Vision faces + YOLO bodies)
         loadingStatus = "Loading detection models..."
         log.log(.info, "Pipeline", "Loading detection models...")
         do {
             try await detector.loadModels()
+            detectorReady = true
             log.log(.info, "Pipeline", "Detection models loaded")
         } catch {
             log.log(.error, "Pipeline", "Detection model failed: \(error.localizedDescription)")
@@ -126,14 +135,18 @@ class Pipeline: ObservableObject {
         }
 
         // 3. VLM — skip at startup to avoid iOS disk-write watchdog kill
-        // (~1.6GB download + CoreML compilation exceeds iOS daily write budget).
+        // (~3GB download + CoreML compilation exceeds iOS daily write budget).
         // VLM loads lazily on first pipeline run, or manually via Settings.
         log.log(.info, "Pipeline", "VLM deferred (load on first use or via Settings)")
 
-        // Always mark ready — degraded functionality is better than no functionality
-        loadingStatus = vlmService.isLoaded ? "Ready" : "Ready (VLM unavailable)"
-        isReady = true
-        log.log(.info, "Pipeline", "Pipeline ready (VLM: \(vlmService.isLoaded ? "yes" : "no"), enroll: \(isEnrollReady ? "yes" : "no"))")
+        // Require detector at minimum — without detection, no people found = all photos pass through unfiltered
+        isReady = detectorReady
+        if detectorReady {
+            loadingStatus = vlmService.isLoaded ? "Ready" : "Ready (VLM unavailable)"
+        } else {
+            loadingStatus = "Error: detection models failed to load"
+        }
+        log.log(detectorReady ? .info : .error, "Pipeline", "Pipeline \(detectorReady ? "ready" : "NOT ready") (detector: \(detectorReady), enroll: \(isEnrollReady), VLM: \(vlmService.isLoaded))")
     }
 
     /// Process a single photo through the full pipeline.
@@ -197,9 +210,15 @@ class Pipeline: ObservableObject {
         do {
             idResult = try await identifier.identify(person: person, in: image)
         } catch {
-            logger.warning("Identification failed: \(error)")
-            log.log(.warning, "Pipeline", "Identification failed: \(error.localizedDescription)")
-            idResult = nil
+            // Fail-closed: identification error → hide (privacy app must not show photos on error)
+            logger.error("Identification failed: \(error)")
+            log.log(.error, "Pipeline", "Identification failed: \(error.localizedDescription)")
+            return PersonFilterResult(
+                person: person, identification: nil,
+                hairSegResult: nil, modestyAssessment: nil,
+                decision: .error("Identification failed: \(error.localizedDescription)"),
+                decisionReason: "Identification error — hiding for safety"
+            )
         }
 
         // If not matched to any enrolled person, keep (we only filter enrolled people)

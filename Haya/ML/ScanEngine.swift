@@ -5,22 +5,34 @@ import os
 
 private let logger = Logger(subsystem: "com.haya.app", category: "ScanEngine")
 
-/// Scans the photo library in background, processing in batches from most recent.
+/// Scans the photo library asynchronously in batches, starting from most recent photos.
+/// Runs while the app is in the foreground; not a true background task.
 actor ScanEngine {
-    private let pipeline: Pipeline
+    private unowned let pipeline: Pipeline
     private var isRunning = false
     private var results: [String: PhotoFilterResult] = [:]
     private var progressContinuation: AsyncStream<ScanProgress>.Continuation?
+    private var _progressStream: AsyncStream<ScanProgress>?
 
     init(pipeline: Pipeline) {
         self.pipeline = pipeline
     }
 
-    /// Stream of progress updates.
+    /// Stream of progress updates. Creates a new stream if the previous one was finished.
     var progressStream: AsyncStream<ScanProgress> {
-        AsyncStream { continuation in
+        if let existing = _progressStream { return existing }
+        let stream = AsyncStream<ScanProgress> { continuation in
             self.progressContinuation = continuation
         }
+        _progressStream = stream
+        return stream
+    }
+
+    /// Reset the stream so the next caller gets a fresh one.
+    private func finishProgressStream() {
+        progressContinuation?.finish()
+        progressContinuation = nil
+        _progressStream = nil
     }
 
     /// Current results keyed by asset local identifier.
@@ -97,6 +109,7 @@ actor ScanEngine {
 
         isRunning = false
         emitProgress(ScanProgress(total: total, processed: processed, hidden: hidden, kept: kept, errors: errors, isScanning: false))
+        finishProgressStream()
         logger.info("Scan complete: \(processed)/\(total) processed, \(hidden) hidden, \(errors) errors")
         await LogStore.shared.log(.info, "Scan", "Complete: \(processed)/\(total) processed, \(hidden) hidden, \(errors) errors")
     }
@@ -104,6 +117,7 @@ actor ScanEngine {
     /// Stop an active scan.
     func stopScan() {
         isRunning = false
+        finishProgressStream()
     }
 
     /// Clear all results for a fresh rescan.

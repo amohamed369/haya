@@ -201,9 +201,13 @@ struct PhotoThumbnailView: View {
         let size = CGSize(width: 200, height: 200)
 
         thumbnail = await withCheckedContinuation { continuation in
+            var resumed = false
             PHImageManager.default().requestImage(
                 for: asset, targetSize: size, contentMode: .aspectFill, options: options
-            ) { image, _ in
+            ) { image, info in
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                guard !isDegraded, !resumed else { return }
+                resumed = true
                 continuation.resume(returning: image)
             }
         }

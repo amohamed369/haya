@@ -91,20 +91,13 @@ actor PersonDetector {
         // Set up body detection request (YOLO)
         var bodyResults: [(CGRect, Float)] = []
         var requests: [VNRequest] = [faceRequest]
+        var bodyRequest: VNCoreMLRequest?
 
         if let model = yoloModel {
-            let bodyRequest = VNCoreMLRequest(model: model) { request, _ in
-                guard let observations = request.results as? [VNRecognizedObjectObservation] else { return }
-                for obs in observations {
-                    let topLabel = obs.labels.first
-                    if topLabel?.identifier == "person" || topLabel?.identifier == "0" {
-                        let flipped = VisionCoordinates.flipToTopLeft(obs.boundingBox)
-                        bodyResults.append((flipped, obs.confidence))
-                    }
-                }
-            }
-            bodyRequest.imageCropAndScaleOption = .scaleFill
-            requests.append(bodyRequest)
+            let req = VNCoreMLRequest(model: model)
+            req.imageCropAndScaleOption = .scaleFill
+            requests.append(req)
+            bodyRequest = req
         }
 
         // Set up instance mask request (iOS 17+)
@@ -116,6 +109,18 @@ actor PersonDetector {
         }
 
         try handler.perform(requests)
+
+        // Extract YOLO body results after perform (avoids data race from completion handler)
+        if let req = bodyRequest,
+           let observations = req.results as? [VNRecognizedObjectObservation] {
+            for obs in observations {
+                let topLabel = obs.labels.first
+                if topLabel?.identifier == "person" || topLabel?.identifier == "0" {
+                    let flipped = VisionCoordinates.flipToTopLeft(obs.boundingBox)
+                    bodyResults.append((flipped, obs.confidence))
+                }
+            }
+        }
 
         // Extract mask observation after perform
         var maskObservation: VNInstanceMaskObservation?
