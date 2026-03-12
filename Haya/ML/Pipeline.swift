@@ -188,19 +188,23 @@ class Pipeline: ObservableObject {
             personResults.append(result)
         }
 
-        // Overall decision: if ANY person should be hidden or errored, hide the photo
-        let shouldHide = personResults.contains {
-            if case .hide = $0.decision { return true }
-            if case .error = $0.decision { return true }
-            return false
-        }
-        let overall: FilterDecision = shouldHide ? .hide : .keep
+        let overall = Self.overallDecision(for: personResults)
 
         let elapsed = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
         return PhotoFilterResult(
             asset: asset, personResults: personResults,
             overallDecision: overall, processingTimeMs: elapsed
         )
+    }
+
+    /// Pure function: if ANY person should be hidden or errored, hide the photo.
+    static func overallDecision(for personResults: [PersonFilterResult]) -> FilterDecision {
+        let shouldHide = personResults.contains {
+            if case .hide = $0.decision { return true }
+            if case .error = $0.decision { return true }
+            return false
+        }
+        return shouldHide ? .hide : .keep
     }
 
     private func processOnePerson(_ person: DetectedPerson, in image: CIImage) async -> PersonFilterResult {

@@ -254,6 +254,30 @@ actor PersonIdentifier {
 
     var currentEnrollments: [PersonEnrollment] { enrollments }
 
+    // MARK: - Matching Logic (Pure)
+
+    /// Pure matching logic — testable without models.
+    struct MatchResult: Sendable {
+        let matched: Bool
+        let useFace: Bool
+        let source: String
+    }
+
+    static func matchPerson(faceSimilarity: Float?, bodySimilarity: Float?, hasFace: Bool) -> MatchResult {
+        let fs = faceSimilarity ?? 0
+        let bs = bodySimilarity ?? 0
+
+        if fs >= faceThreshold {
+            return MatchResult(matched: true, useFace: true, source: "face")
+        } else if hasFace && fs > 0 && fs < faceThreshold && bs >= bodyWithWrongFaceThreshold {
+            return MatchResult(matched: true, useFace: false, source: "body_override")
+        } else if bs >= bodyThreshold {
+            return MatchResult(matched: true, useFace: false, source: "body")
+        } else {
+            return MatchResult(matched: false, useFace: false, source: "none")
+        }
+    }
+
     // MARK: - Helpers
 
     private func centroidsFor(_ keyPath: KeyPath<PersonEnrollment, [Float]?>) -> [(id: String, embedding: [Float])] {
