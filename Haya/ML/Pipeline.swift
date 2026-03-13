@@ -266,14 +266,14 @@ class Pipeline: ObservableObject {
             )
         }
 
-        // Step 4: VLM modesty check — lazy-load on first use
-        if !vlmService.isLoaded {
-            do {
-                log.log(.info, "Pipeline", "Loading VLM on first use...")
-                try await vlmService.loadModel()
-            } catch {
-                log.log(.error, "Pipeline", "VLM load failed: \(error.localizedDescription)")
-            }
+        // Step 4: VLM modesty check — require VLM to be pre-loaded (via Settings).
+        // Never lazy-load during scan: 3GB download + compile would spike memory and get killed by iOS.
+        guard vlmService.isLoaded else {
+            return PersonFilterResult(
+                person: person, identification: id,
+                hairSegResult: hairResult, modestyAssessment: nil,
+                decision: .hide, decisionReason: "VLM not loaded — hiding for safety (download model in Settings)"
+            )
         }
         // Prefer instance-masked crop (isolates person), fall back to rectangular personBox crop.
         let personCrop: CIImage
