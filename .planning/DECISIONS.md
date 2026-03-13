@@ -329,43 +329,52 @@ Originally proposed a 3-layer cascade with a YOLO model trained specifically on 
 
 ---
 
-## Decision 6: VLM Choice — QWEN2.5-VL-3B (iOS) / INTERNVL3.5-4B (Kaggle)
+## Decision 6: VLM Choice — QWEN3.5-4B (Both Kaggle & iOS)
 
 ### What This Solves
 Which on-device Vision Language Model to run for the modesty assessment.
 
 ### Architecture
 ```
-Kaggle/T4:   InternVL3.5-4B INT8 (POPE 88.9, MMMU 66.6, ~5GB VRAM)
-iPhone:      Qwen2.5-VL-3B-Instruct-4bit via mlx-swift-lm (83% Kaggle accuracy, 3.07GB)
+Kaggle/T4:   Qwen3.5-4B INT8 (MMMU 77.6, OCRBench 85.0, ~5GB VRAM)
+iPhone:      mlx-community/Qwen3.5-4B-MLX-4bit via mlx-swift-lm (3.03GB, qwen3_5)
 ```
 
-### Qwen2.5-VL-3B-Instruct-4bit (iPhone — CURRENT)
-- Model ID: `mlx-community/Qwen2.5-VL-3B-Instruct-4bit`
-- ~3.07GB disk, fits in iPhone 6GB RAM
-- 83% accuracy in Kaggle testing (second best overall)
-- Natively supported in mlx-swift-lm `VLMTypeRegistry` (`qwen2_5_vl`)
+### Qwen3.5-4B (CURRENT — Both Platforms)
+- Kaggle: `Qwen/Qwen3.5-4B` with BitsAndBytesConfig(load_in_8bit=True)
+- iPhone: `mlx-community/Qwen3.5-4B-MLX-4bit` (3.03GB)
+- Natively multimodal (Image-Text-to-Text — vision trained from scratch)
+- MMMU 77.6 (beats InternVL3.5-4B at 66.6 by 11 points)
+- Natively supported in mlx-swift-lm `VLMTypeRegistry` (`qwen3_5`, PR #120)
+- Architecture: `Qwen3_5ForConditionalGeneration`, model_type: `qwen3_5`
 - Q_MODESTY 6-area checklist prompt, VERDICT last-line parser
 - System prompt: "You check Islamic modesty in photos. Focus ONLY on THIS person."
 - maxTokens=200, resize=448x448
 
 ### CRITICAL: InternVL3 NOT Supported in mlx-swift-lm
 - mlx-community/InternVL3-2B-4bit exists (1.61GB) but InternVL architecture NOT in Swift VLMTypeRegistry
-- Supported architectures: qwen2_vl, qwen2_5_vl, qwen3_vl, paligemma, gemma3, idefics3, smolvlm, pixtral, mistral3
+- llama.cpp InternVL PR #9403 is broken/unmerged
 - Python mlx-vlm DOES support InternVL3 but Swift framework does NOT
-- This makes Qwen2.5-VL the best available Swift-compatible VLM
+- Qwen3.5-4B now surpasses InternVL3.5-4B on benchmarks anyway
 
 ### VLM Evolution (iOS app)
 1. SmolVLM2-2.2B: 61% accuracy, CoreML blocked → **Replaced**
-2. **Qwen2.5-VL-3B-Instruct-4bit**: 83% accuracy, mlx-swift-lm native → **CURRENT**
+2. Qwen2.5-VL-3B-Instruct-4bit: 83% accuracy, mlx-swift-lm native → **Replaced by Qwen3.5**
+3. **Qwen3.5-4B-MLX-4bit**: MMMU 77.6, native multimodal, mlx-swift-lm native → **CURRENT**
+
+### VLM Evolution (Kaggle/T4)
+1. Qwen3-VL-2B: hallucinated coverage on 5+ photos → **Replaced**
+2. InternVL3.5-4B INT8: MMMU 66.6, POPE 88.9 → **Replaced by Qwen3.5**
+3. **Qwen3.5-4B INT8**: MMMU 77.6, native multimodal → **CURRENT**
 
 ### Options Considered (iOS)
-| Option | Size | Accuracy | Swift Support | Verdict |
-|--------|------|----------|--------------|---------|
-| SmolVLM2-2.2B | 1.2GB | 61% | Yes (smolvlm) | Replaced — too weak |
-| InternVL3-2B-4bit | 1.61GB | Unknown | NO (not in registry) | **BLOCKED** |
-| **Qwen2.5-VL-3B-4bit** | 3.07GB | 83% | Yes (qwen2_5_vl) | **CHOSEN** |
-| Qwen3-VL-4B-4bit | ~4GB | TBD | Yes (qwen3_vl) | Tight on 6GB RAM |
+| Option | Size | MMMU | Swift Support | Verdict |
+|--------|------|------|--------------|---------|
+| SmolVLM2-2.2B | 1.2GB | ~40 | Yes (smolvlm) | Replaced — too weak |
+| InternVL3-2B-4bit | 1.61GB | ~56 | NO (not in registry) | **BLOCKED** |
+| Qwen2.5-VL-3B-4bit | 3.07GB | ~63 | Yes (qwen2_5_vl) | Replaced by Qwen3.5 |
+| **Qwen3.5-4B-4bit** | 3.03GB | 77.6 | Yes (qwen3_5) | **CHOSEN** |
+| Qwen3.5-9B-4bit | ~5.6GB | Higher | Yes (qwen3_5) | Too tight on 8GB iPhone |
 
 ### Why NOT Cloud API (GPT-4V, Claude Vision, Gemini)
 - **Privacy**: Sending modesty photos to third-party servers contradicts app's purpose
@@ -608,7 +617,7 @@ STEP 3: FILTER CHECK ("should this be hidden?")
 │ ├─ Lots of hair visible → HIDE (skip VLM)        │
 │ └─ Otherwise → Layer 2                           │
 │                                                   │
-│ Layer 2: VLM Qwen2.5-VL-3B-4bit (200-500ms)      │
+│ Layer 2: VLM Qwen3.5-4B-4bit (200-500ms)           │
 │ → Custom or default prompt with user corrections  │
 │ ├─ Confident match → HIDE                        │
 │ ├─ Confident no match → KEEP                     │
@@ -634,54 +643,57 @@ STEP 4: FEEDBACK LOOP (ongoing)
 | InsightFace ArcFace | ~85MB FP16 | Face embeddings |
 | CLIP-ReID ViT-B/16 (INT4) | ~45-50MB | Body re-identification |
 | MediaPipe Hair Seg | ~1MB | Hair pre-filter |
-| Qwen2.5-VL-3B (4-bit) | ~3.07GB | Modesty assessment |
+| Qwen3.5-4B (4-bit) | ~3.03GB | Modesty assessment |
 | **Total** | **~3.2GB** | |
 
 ---
 
-## Decision 10: VLM Model Switch — SmolVLM2 → FastVLM → Qwen3-VL-2B
+## Decision 10: VLM Model Switch — SmolVLM2 → FastVLM → Qwen3-VL-2B → InternVL3.5-4B → Qwen3.5-4B
 
-### VLM Evolution
-1. **SmolVLM2-2.2B** (Round 12-17): 61% Q1 accuracy (25/41 KEEP). CoreML blocked (unfold op).
-2. **Apple FastVLM-1.5B** (Round 18): 61% Q1 accuracy (27/44 KEEP). Hallucinated arms/hair (6/10 false HIDEs = Q2 Arms).
-3. **Qwen3-VL-2B-Instruct** (Current): Strongest small VLM (DocVQA 96.5). 4-bit NF4 on T4.
+### VLM Evolution (Full History)
+1. **SmolVLM2-2.2B** (Round 12-17): 61% Q1 accuracy. CoreML blocked (unfold op).
+2. **Apple FastVLM-1.5B** (Round 18): 61% Q1 accuracy. Hallucinated arms/hair.
+3. **Qwen2.5-VL-3B**: 83% accuracy. Proven good.
+4. **Qwen3-VL-2B**: Hallucinated coverage on 5+ photos, hallucinated hijab on bare head.
+5. **InternVL3.5-4B INT8**: MMMU 66.6, POPE 88.9. Good but no iPhone path.
+6. **Qwen3.5-4B**: MMMU 77.6, native multimodal, iPhone + Kaggle unified. **CURRENT**
 
 ### Model Comparison
-| Model | Q4 Size | DocVQA | Our Q1% | iPhone Path | Status |
-|-------|---------|--------|---------|-------------|--------|
-| SmolVLM2-2.2B | ~1.2GB | ~70 | 61% | CoreML BLOCKED | Replaced |
-| Apple FastVLM-1.5B | ~1.5GB | 51.0 | 61% | CoreML native | Replaced (hallucinations) |
-| Qwen2.5-VL-3B | 1.93GB | 93.9 | 83% | llama.cpp fork | Proven in R13 |
-| **Qwen3-VL-2B** | 1.56GB | **96.5** | TBD | Official GGUF | **Current** |
+| Model | Q4 Size | MMMU | Our Accuracy | iPhone Path | Status |
+|-------|---------|------|-------------|-------------|--------|
+| SmolVLM2-2.2B | ~1.2GB | ~40 | 61% | CoreML BLOCKED | Replaced |
+| Apple FastVLM-1.5B | ~1.5GB | — | 61% | CoreML native | Replaced (hallucinations) |
+| Qwen2.5-VL-3B | 3.07GB | ~63 | 83% | mlx-swift-lm | Replaced by Qwen3.5 |
+| InternVL3.5-4B INT8 | ~5GB | 66.6 | TBD | NO iPhone path | Replaced by Qwen3.5 |
+| **Qwen3.5-4B** | 3.03GB | **77.6** | TBD | mlx-swift-lm | **CURRENT** |
 
-### Qwen3-VL-2B Setup (T4 GPU)
-- **Class**: `Qwen3VLForConditionalGeneration` + `AutoProcessor`
-- **Quantization**: BitsAndBytes 4-bit NF4 + double quant, `bnb_4bit_compute_dtype=torch.float16`
+### Qwen3.5-4B Setup (T4 GPU)
+- **Class**: `Qwen3_5ForConditionalGeneration` + `AutoProcessor`
+- **model_type**: `qwen3_5` (NOT qwen3_vl)
+- **Quantization**: BitsAndBytes INT8 (`load_in_8bit=True`), or FP16 (~10GB)
 - **Attention**: SDPA (NOT flash_attention_2 — FA2 needs SM80+, T4 is SM75)
-- **Resolution**: Dynamic via `max_pixels=640*28*28` (~500K px), no manual resize
-- **torch.compile**: Skip — breaks Qwen3-VL custom rotary embedding ops
 - **Generation**: Greedy first (`do_sample=False`), retry with temperature bump
 - **Stop criteria**: StopOnVerdict (min_tokens=15, then halt on YES/NO)
-- **max_new_tokens**: 60 (reasoning + verdict)
-- **Dependencies**: `transformers bitsandbytes qwen-vl-utils`
+- **max_new_tokens**: 200 (reasoning + verdict)
+- **Dependencies**: `transformers bitsandbytes` (no qwen_vl_utils needed)
+- **No trust_remote_code needed**
 
-### Prompting: 1 Combined Question (Coverage-Confirmation)
-- Single question covering hair/arms/legs/fit/torso (5→1Q, faster)
-- YES = all covered/safe (KEEP), NO = any violation (HIDE)
-- Negative anchors: "shadows, wrinkles, fabric texture are NOT bare skin"
-- "THIS person only" anchoring for multi-person crops
-- System prompt defaults unsure/out-of-frame to YES (covered)
-- If 1Q accuracy is bad, fall back to 3Q (hair, arms, legs)
+### Prompting: 1Q Modesty Checklist
+- 6-area checklist (head/neck/arms/chest/legs/fit), 2-3 words per area
+- Describe-then-judge, self-verification step
+- YES = all covered/safe (KEEP), NO = any bare skin/hair visible (HIDE)
+- System: "You check Islamic modesty in photos. Focus ONLY on THIS person."
+- VERDICT last-line parser (avoids stray "no" in reasoning)
 
 ### iPhone Deployment Path
-- llama.cpp + GGUF Q4_K_M (~1.5GB)
-- Estimated ~5-10s/question on iPhone 13+
-- Qwen3.5 NOT viable (smallest 27B dense)
-- MobileVLM V2 NOT worth it (weaker than FastVLM)
+- MLX Swift via mlx-swift-lm (`qwen3_5` in VLMTypeRegistry)
+- `mlx-community/Qwen3.5-4B-MLX-4bit` — 3.03GB
+- mlx-swift-lm revision bc3c20ef or later (PR #120)
+- Estimated ~5-10s/question on iPhone 15 Pro+
 
 ### Minimum Device Requirements
+- iPhone 15 Pro+ (8GB RAM) recommended for Qwen3.5-4B
 - iPhone 12+ (iOS 16+) for pipeline without VLM
-- iPhone 13+ recommended for Qwen3-VL-2B on-device
 - iOS 17+ for best Apple Vision features
 
 ---
@@ -744,8 +756,8 @@ All ML runs on the iPhone's Neural Engine / GPU. No server calls. Photos never l
 | Face Recognition | InsightFace ArcFace (CoreML) |
 | Body Re-ID | CLIP-ReID ViT-B/16 (CoreML INT4) |
 | Hair Segmentation | MediaPipe Hair Seg (TFLite → CoreML) |
-| VLM (Colab/Kaggle POC) | Qwen3-VL-2B-Instruct (4-bit NF4, 1Q combined) |
-| VLM (iOS target) | Qwen2.5-VL-3B-Instruct-4bit via mlx-swift-lm |
+| VLM (Kaggle/T4) | Qwen3.5-4B INT8 (MMMU 77.6, native multimodal) |
+| VLM (iOS) | Qwen3.5-4B-MLX-4bit via mlx-swift-lm (qwen3_5) |
 | NSFW Pre-filter | Apple SensitiveContentAnalysis (iOS 17+) |
 | On-Device Learning | VLM prompt tuning + threshold adjustment |
 | Local Storage | CoreData or SQLite |

@@ -16,7 +16,7 @@
 ## Architecture
 
 - Native SwiftUI iOS 18+ app
-- ML pipeline: PersonDetector (Vision+YOLO) → PersonIdentifier (ArcFace+CLIPReID) → HairSegmenter → VLMService (Qwen2.5-VL-3B via MLX Swift)
+- ML pipeline: PersonDetector (Vision+YOLO) → PersonIdentifier (ArcFace+CLIPReID) → HairSegmenter → VLMService (Qwen3.5-4B via MLX Swift)
 - All ML models are actors for thread safety
 - Pipeline is @MainActor ObservableObject
 - LogStore.shared: @MainActor singleton, injected as environmentObject
