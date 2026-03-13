@@ -27,11 +27,11 @@ class VLMService: ObservableObject {
     private var modelContainer: ModelContainer?
     private let ciContext = CIContext()
 
-    /// Model ID — Qwen2.5-VL-3B (83% accuracy in Kaggle testing, natively supported in mlx-swift-lm).
-    let modelID = "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"
+    /// Model ID — Qwen3.5-4B (MMMU 77.6, native multimodal, natively supported in mlx-swift-lm).
+    let modelID = "mlx-community/Qwen3.5-4B-MLX-4bit"
 
-    /// Estimated model size in bytes (~3.07 GB for 3B 4-bit).
-    static let estimatedModelSizeBytes: Int64 = 3_070_000_000
+    /// Estimated model size in bytes (~3.03 GB for 4B 4-bit).
+    static let estimatedModelSizeBytes: Int64 = 3_030_000_000
 
     /// Download / load state machine.
     enum DownloadState: Equatable {

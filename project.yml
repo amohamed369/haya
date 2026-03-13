@@ -9,7 +9,7 @@ options:
 packages:
   mlx-swift-lm:
     url: https://github.com/ml-explore/mlx-swift-lm
-    revision: b362c8a4
+    revision: bc3c20ef
 
 targets:
   Haya:
