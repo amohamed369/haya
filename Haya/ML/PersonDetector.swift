@@ -100,12 +100,20 @@ actor PersonDetector {
             bodyRequest = req
         }
 
-        // Set up instance mask request (iOS 17+)
+        // Instance mask request (iOS 17+) — DISABLED on iOS 26.x beta.
+        // VNGeneratePersonInstanceMaskRequest uses ANE internally and triggers
+        // the same SIGSEGV in ANECompiler that affects CoreML models.
+        // Unlike MLModelConfiguration, Vision requests have no computeUnits override.
+        // The pipeline falls back to YOLO bounding boxes + face-anchored estimates.
         var maskRequest: VNRequest?
         if #available(iOS 17.0, *) {
-            let req = VNGeneratePersonInstanceMaskRequest()
-            requests.append(req)
-            maskRequest = req
+            let iosVersion = ProcessInfo.processInfo.operatingSystemVersion
+            let isIOS26Beta = iosVersion.majorVersion >= 26
+            if !isIOS26Beta {
+                let req = VNGeneratePersonInstanceMaskRequest()
+                requests.append(req)
+                maskRequest = req
+            }
         }
 
         try handler.perform(requests)

@@ -61,6 +61,15 @@ actor HairSegmenter {
     }
 
     private func estimateHairRatio(headCrop: CIImage) async throws -> Float {
+        // VNGeneratePersonSegmentationRequest uses ANE internally.
+        // On iOS 26.x beta, ANECompiler has a SIGSEGV bug — skip seg and return 0
+        // so the pipeline falls through to VLM (or hides if VLM not loaded).
+        let iosVersion = ProcessInfo.processInfo.operatingSystemVersion
+        if iosVersion.majorVersion >= 26 {
+            await LogStore.shared.log(.info, "HairSeg", "Skipped on iOS \(iosVersion.majorVersion) (ANE bug)")
+            return 0
+        }
+
         let handler = VNImageRequestHandler(ciImage: headCrop, options: [:])
         let segRequest = VNGeneratePersonSegmentationRequest()
         segRequest.qualityLevel = .fast
