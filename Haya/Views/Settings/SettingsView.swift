@@ -24,6 +24,12 @@ struct SettingsView: View {
                 .padding(.horizontal, Haya.Spacing.lg)
                 .padding(.top, Haya.Spacing.md)
 
+                // Safe mode / crash diagnostic banner
+                if CrashGuard.shared.isSafeMode || CrashGuard.shared.consecutiveCrashes > 0 {
+                    crashDiagnosticSection
+                        .padding(.horizontal, Haya.Spacing.lg)
+                }
+
                 // Processing
                 processingSection
                     .padding(.horizontal, Haya.Spacing.lg)
@@ -311,6 +317,92 @@ struct SettingsView: View {
         .glassCard()
     }
 
+    // MARK: - Crash Diagnostic
+
+    private var crashDiagnosticSection: some View {
+        VStack(alignment: .leading, spacing: Haya.Spacing.md) {
+            HStack(spacing: Haya.Spacing.sm) {
+                Image(systemName: CrashGuard.shared.isSafeMode ? "exclamationmark.shield.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(Haya.Colors.accentRose)
+                Text(CrashGuard.shared.isSafeMode ? "Safe Mode Active" : "Crash Detected")
+                    .font(HayaFont.headline)
+                    .foregroundStyle(Haya.Colors.textCream)
+            }
+
+            Text("The app crashed \(CrashGuard.shared.consecutiveCrashes) time(s) during scanning. Auto-scan is disabled to prevent crash loops.")
+                .font(HayaFont.caption)
+                .foregroundStyle(Haya.Colors.textSage)
+
+            // Show last crash breadcrumbs
+            let crumbs = CrashGuard.shared.lastCrashBreadcrumbs
+            if !crumbs.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Last crash trace:")
+                        .font(HayaFont.caption)
+                        .foregroundStyle(Haya.Colors.textSageDim)
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(crumbs.suffix(15).enumerated()), id: \.offset) { _, line in
+                                Text(line)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(Haya.Colors.accentRose.opacity(0.8))
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 150)
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: Haya.Radius.xs)
+                            .fill(Color.black.opacity(0.3))
+                    )
+                }
+            }
+
+            HStack(spacing: Haya.Spacing.md) {
+                if CrashGuard.shared.isSafeMode {
+                    Button {
+                        CrashGuard.shared.exitSafeMode()
+                        pipeline.startBackgroundScan(batchSize: appState.batchSize)
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Exit Safe Mode & Retry Scan")
+                        }
+                        .font(HayaFont.pill)
+                        .foregroundStyle(Haya.Colors.accentOrange)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: Haya.Radius.sm)
+                                .strokeBorder(Haya.Colors.accentOrange.opacity(0.3), lineWidth: 1.5)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    UIPasteboard.general.string = CrashGuard.shared.diagnosticSummary()
+                } label: {
+                    HStack {
+                        Image(systemName: "doc.on.doc")
+                        Text("Copy Diagnostics")
+                    }
+                    .font(HayaFont.caption)
+                    .foregroundStyle(Haya.Colors.textSage)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: Haya.Radius.sm)
+                            .strokeBorder(Haya.Colors.glassBorder, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .glassCard()
+    }
+
     // MARK: - Debug
 
     private var debugSection: some View {
@@ -318,11 +410,14 @@ struct SettingsView: View {
             SectionHeader(title: "Debug")
 
             VStack(spacing: Haya.Spacing.sm) {
+                let ios = ProcessInfo.processInfo.operatingSystemVersion
+                debugRow("iOS", value: "\(ios.majorVersion).\(ios.minorVersion).\(ios.patchVersion)")
                 debugRow("Pipeline", value: pipeline.loadingStatus)
                 debugRow("VLM Status", value: vlmStatusText)
                 debugRow("People Enrolled", value: "\(enrollments.count)")
                 debugRow("Photos Scanned", value: "\(pipeline.scanProgress.processed)")
                 debugRow("Disk Free", value: VLMService.availableDiskSpace)
+                debugRow("Crash Count", value: "\(CrashGuard.shared.consecutiveCrashes)")
             }
         }
         .glassCard()

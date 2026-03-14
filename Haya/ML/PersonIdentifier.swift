@@ -39,20 +39,29 @@ actor PersonIdentifier {
     func loadModels() async throws {
         let config = MLModelConfiguration()
         config.computeUnits = .cpuAndGPU // ANE compiler crashes on iOS 26.3 beta
+        CrashGuard.shared.breadcrumb("Identifier", "loadModels() START")
+        CrashGuard.shared.flushToDisk()
 
         // Load each model independently — one failure shouldn't block the other
         do {
+            CrashGuard.shared.breadcrumb("Identifier", "ArcFace loading...")
             arcFaceModel = try MLModel(contentsOf: Self.modelURL(name: "ArcFace"), configuration: config)
+            CrashGuard.shared.breadcrumb("Identifier", "ArcFace OK")
             await LogStore.shared.log(.info, "Identifier", "ArcFace loaded")
         } catch {
+            CrashGuard.shared.breadcrumb("Identifier", "ArcFace FAILED: \(error.localizedDescription)")
             await LogStore.shared.log(.error, "Identifier", "ArcFace failed: \(error.localizedDescription)")
             logger.error("ArcFace failed: \(error)")
         }
 
         do {
+            CrashGuard.shared.breadcrumb("Identifier", "CLIPReID loading...")
+            CrashGuard.shared.flushToDisk()
             clipreidModel = try MLModel(contentsOf: Self.modelURL(name: "CLIPReID"), configuration: config)
+            CrashGuard.shared.breadcrumb("Identifier", "CLIPReID OK")
             await LogStore.shared.log(.info, "Identifier", "CLIPReID loaded")
         } catch {
+            CrashGuard.shared.breadcrumb("Identifier", "CLIPReID FAILED: \(error.localizedDescription)")
             await LogStore.shared.log(.error, "Identifier", "CLIPReID failed: \(error.localizedDescription)")
             logger.error("CLIPReID failed: \(error)")
         }
@@ -62,6 +71,7 @@ actor PersonIdentifier {
         }
 
         enrollments = Self.loadEnrollments()
+        CrashGuard.shared.breadcrumb("Identifier", "Enrollments loaded: \(enrollments.count)")
         await LogStore.shared.log(.info, "Identifier", "Loaded \(enrollments.count) enrollment(s)")
     }
 

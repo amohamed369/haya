@@ -55,12 +55,18 @@ actor PersonDetector {
     func loadModels() async throws {
         let config = MLModelConfiguration()
         config.computeUnits = .cpuAndGPU // ANE compiler crashes on iOS 26.3 beta
+        CrashGuard.shared.breadcrumb("Detector", "loadModels() START computeUnits=cpuAndGPU")
+        CrashGuard.shared.flushToDisk()
         do {
             let url = try Self.modelURL(name: "YOLO11n")
+            CrashGuard.shared.breadcrumb("Detector", "YOLO11n URL=\(url.lastPathComponent)")
             let yolo = try MLModel(contentsOf: url, configuration: config)
+            CrashGuard.shared.breadcrumb("Detector", "YOLO11n MLModel OK")
             yoloModel = try VNCoreMLModel(for: yolo)
+            CrashGuard.shared.breadcrumb("Detector", "YOLO11n VNCoreMLModel OK")
             await LogStore.shared.log(.info, "Detector", "YOLO11n loaded")
         } catch {
+            CrashGuard.shared.breadcrumb("Detector", "YOLO11n FAILED: \(error.localizedDescription)")
             await LogStore.shared.log(.error, "Detector", "YOLO11n failed: \(error.localizedDescription)")
             logger.error("YOLO11n failed: \(error)")
             // Don't rethrow — face-only detection still works without YOLO
@@ -116,7 +122,13 @@ actor PersonDetector {
             }
         }
 
+        let requestNames = requests.map { String(describing: type(of: $0)).replacingOccurrences(of: "VN", with: "") }
+        CrashGuard.shared.breadcrumb("Detector", "perform(\(requestNames.joined(separator: ","))) START")
+        CrashGuard.shared.flushToDisk()
+
         try handler.perform(requests)
+
+        CrashGuard.shared.breadcrumb("Detector", "perform() OK")
 
         // Extract YOLO body results after perform (avoids data race from completion handler)
         if let req = bodyRequest,

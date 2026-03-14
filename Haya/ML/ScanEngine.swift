@@ -78,8 +78,10 @@ actor ScanEngine {
                 }
 
                 // Load image
+                let shortID = String(asset.localIdentifier.prefix(8))
+                CrashGuard.shared.breadcrumb("Scan", "loadImage [\(shortID)] #\(processed+1)/\(total)")
                 guard let ciImage = await loadImage(asset) else {
-                    await LogStore.shared.log(.warning, "Scan", "Failed to load image: \(asset.localIdentifier.prefix(8))...")
+                    await LogStore.shared.log(.warning, "Scan", "Failed to load image: \(shortID)...")
                     errors += 1
                     processed += 1
                     emitProgress(ScanProgress(total: total, processed: processed, hidden: hidden, kept: kept, errors: errors, isScanning: true))
@@ -87,8 +89,11 @@ actor ScanEngine {
                 }
 
                 // Process through pipeline
+                CrashGuard.shared.breadcrumb("Scan", "processPhoto [\(shortID)] #\(processed+1)/\(total)")
+                CrashGuard.shared.flushToDisk()
                 let result = await pipeline.processPhoto(ciImage, asset: asset)
                 results[asset.localIdentifier] = result
+                CrashGuard.shared.markPhotoProcessed()
 
                 processed += 1
                 switch result.overallDecision {

@@ -81,9 +81,17 @@ class Pipeline: ObservableObject {
             return
         }
 
+        // Don't scan in safe mode (previous crash detected)
+        guard !CrashGuard.shared.isSafeMode else {
+            LogStore.shared.log(.warning, "Pipeline", "Scan skipped — safe mode active (previous crash)")
+            return
+        }
+
         // Cancel any previous listener to prevent duplicate streams
         scanListenerTask?.cancel()
         scanTask?.cancel()
+
+        CrashGuard.shared.markScanStarted()
 
         scanTask = Task { [weak self] in
             guard let self else { return }
@@ -98,6 +106,7 @@ class Pipeline: ObservableObject {
                 }
             }
             await scanEngine.startScan(batchSize: batchSize)
+            CrashGuard.shared.markScanFinished()
         }
     }
 
@@ -159,18 +168,25 @@ class Pipeline: ObservableObject {
     /// Process a single photo through the full pipeline.
     func processPhoto(_ image: CIImage, asset: PHAsset? = nil) async -> PhotoFilterResult {
         let startTime = CFAbsoluteTimeGetCurrent()
+        let assetID = asset?.localIdentifier.prefix(8) ?? "unknown"
         isProcessing = true
         defer { isProcessing = false }
+
+        CrashGuard.shared.breadcrumb("Pipeline", "processPhoto START [\(assetID)] extent=\(image.extent)")
 
         // Step 1: Detect people
         let log = LogStore.shared
         let detectedPeople: [DetectedPerson]
         do {
+            CrashGuard.shared.breadcrumb("Pipeline", "detect() START [\(assetID)]")
+            CrashGuard.shared.flushToDisk()
             detectedPeople = try await detector.detect(in: image)
+            CrashGuard.shared.breadcrumb("Pipeline", "detect() OK [\(assetID)] found=\(detectedPeople.count)")
             if !detectedPeople.isEmpty {
                 log.log(.info, "Pipeline", "Detected \(detectedPeople.count) person(s)")
             }
         } catch {
+            CrashGuard.shared.breadcrumb("Pipeline", "detect() FAILED [\(assetID)] \(error.localizedDescription)")
             logger.error("Detection failed: \(error)")
             log.log(.error, "Pipeline", "Detection failed: \(error.localizedDescription)")
             let elapsed = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
@@ -217,11 +233,14 @@ class Pipeline: ObservableObject {
     private func processOnePerson(_ person: DetectedPerson, in image: CIImage) async -> PersonFilterResult {
         // Step 2: Try to identify
         let log = LogStore.shared
+        CrashGuard.shared.breadcrumb("Pipeline", "identify() START src=\(person.source)")
         let idResult: IdentificationResult?
         do {
             idResult = try await identifier.identify(person: person, in: image)
+            CrashGuard.shared.breadcrumb("Pipeline", "identify() OK match=\(idResult?.isMatch ?? false)")
         } catch {
             // Fail-closed: identification error → hide (privacy app must not show photos on error)
+            CrashGuard.shared.breadcrumb("Pipeline", "identify() FAILED \(error.localizedDescription)")
             logger.error("Identification failed: \(error)")
             log.log(.error, "Pipeline", "Identification failed: \(error.localizedDescription)")
             return PersonFilterResult(
@@ -255,10 +274,14 @@ class Pipeline: ObservableObject {
         }
 
         // Step 3: Hair segmentation pre-filter
+        CrashGuard.shared.breadcrumb("Pipeline", "hairSeg() START")
+        CrashGuard.shared.flushToDisk()
         let hairResult: HairSegmentationResult?
         do {
             hairResult = try await hairSegmenter.analyze(person: person, in: image)
+            CrashGuard.shared.breadcrumb("Pipeline", "hairSeg() OK ratio=\(hairResult?.hairRatio ?? 0)")
         } catch {
+            CrashGuard.shared.breadcrumb("Pipeline", "hairSeg() FAILED \(error.localizedDescription)")
             logger.warning("Hair segmentation failed: \(error)")
             log.log(.warning, "Pipeline", "Hair seg failed: \(error.localizedDescription)")
             hairResult = nil
