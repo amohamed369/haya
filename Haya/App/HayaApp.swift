@@ -41,9 +41,10 @@ struct HayaApp: App {
                     }
                 }
 
-                CrashGuard.shared.breadcrumb("App", "loadModels() START")
+                CrashGuard.shared.markModelLoadStarted()
                 await pipeline.loadModels()
-                CrashGuard.shared.breadcrumb("App", "loadModels() DONE ready=\(pipeline.isReady)")
+                CrashGuard.shared.markModelLoadFinished()
+                CrashGuard.shared.breadcrumb("App", "Pipeline ready=\(pipeline.isReady)")
 
                 // Auto-scan on launch if enabled, onboarding complete, and not in safe mode
                 if appState.hasCompletedOnboarding && appState.scanOnLaunch && !isSafe {

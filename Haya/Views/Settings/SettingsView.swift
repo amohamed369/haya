@@ -329,7 +329,7 @@ struct SettingsView: View {
                     .foregroundStyle(Haya.Colors.textCream)
             }
 
-            Text("The app crashed \(CrashGuard.shared.consecutiveCrashes) time(s) during scanning. Auto-scan is disabled to prevent crash loops.")
+            Text("The app crashed \(CrashGuard.shared.consecutiveCrashes) time(s) during scanning. Auto-scan is disabled to prevent crash loops. Current memory: \(CrashGuard.shared.logMemory("settings")) MB")
                 .font(HayaFont.caption)
                 .foregroundStyle(Haya.Colors.textSage)
 

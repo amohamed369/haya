@@ -79,6 +79,12 @@ actor ScanEngine {
 
                 // Load image
                 let shortID = String(asset.localIdentifier.prefix(8))
+
+                // Log memory every 10 photos to track pressure
+                if processed % 10 == 0 {
+                    CrashGuard.shared.logMemory("photo #\(processed+1)/\(total)")
+                }
+
                 CrashGuard.shared.breadcrumb("Scan", "loadImage [\(shortID)] #\(processed+1)/\(total)")
                 guard let ciImage = await loadImage(asset) else {
                     await LogStore.shared.log(.warning, "Scan", "Failed to load image: \(shortID)...")
