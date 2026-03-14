@@ -27,7 +27,8 @@ struct HayaApp: App {
             }
             .onChange(of: appState.hasCompletedOnboarding) { _, completed in
                 // Trigger first scan when onboarding finishes
-                if completed && pipeline.isReady {
+                // Guard: only if not already scanning (`.task` may have started one)
+                if completed && pipeline.isReady && !pipeline.scanProgress.isScanning {
                     pipeline.startBackgroundScan(batchSize: appState.batchSize)
                 }
             }

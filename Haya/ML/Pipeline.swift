@@ -75,11 +75,18 @@ class Pipeline: ObservableObject {
 
     /// Start background scan and feed results back to published properties.
     func startBackgroundScan(batchSize: Int = 20) {
+        // Don't scan if models aren't loaded — nothing useful can happen
+        guard isReady else {
+            LogStore.shared.log(.warning, "Pipeline", "Scan skipped — models not loaded")
+            return
+        }
+
         // Cancel any previous listener to prevent duplicate streams
         scanListenerTask?.cancel()
         scanTask?.cancel()
 
-        scanTask = Task {
+        scanTask = Task { [weak self] in
+            guard let self else { return }
             let stream = await scanEngine.progressStream
             scanListenerTask = Task { [weak self] in
                 for await progress in stream {

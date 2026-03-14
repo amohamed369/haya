@@ -8,7 +8,7 @@ private let logger = Logger(subsystem: "com.haya.app", category: "ScanEngine")
 /// Scans the photo library asynchronously in batches, starting from most recent photos.
 /// Runs while the app is in the foreground; not a true background task.
 actor ScanEngine {
-    private unowned let pipeline: Pipeline
+    private let pipeline: Pipeline
     private var isRunning = false
     private var results: [String: PhotoFilterResult] = [:]
     private var progressContinuation: AsyncStream<ScanProgress>.Continuation?
