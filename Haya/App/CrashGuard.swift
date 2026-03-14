@@ -48,9 +48,8 @@ final class CrashGuard: NSObject, MXMetricManagerSubscriber {
                     let sig = crash.signal?.description ?? "unknown"
                     let code = crash.exceptionCode?.description ?? "?"
                     diagLines.append("CRASH: signal=\(sig) code=\(code) type=\(crash.terminationReason ?? "?")")
-                    if let tree = crash.callStackTree {
-                        diagLines.append("  callStack: \(String(data: tree.jsonRepresentation(), encoding: .utf8)?.prefix(500) ?? "?")")
-                    }
+                    let tree = crash.callStackTree
+                    diagLines.append("  callStack: \(String(data: tree.jsonRepresentation(), encoding: .utf8)?.prefix(500) ?? "?")")
                 }
             }
             if let hangs = payload.hangDiagnostics {
