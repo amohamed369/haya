@@ -122,14 +122,44 @@ actor PersonDetector {
             maskRequest = req
         }
 
-        let requestNames = requests.map { String(describing: type(of: $0)).replacingOccurrences(of: "VN", with: "") }
-        let cpuOnly = isIOS26 ? " [CPU-only]" : ""
-        CrashGuard.shared.breadcrumb("Detector", "perform(\(requestNames.joined(separator: ",")))\(cpuOnly) START")
-        CrashGuard.shared.flushToDisk()
+        // On iOS 26 beta, run each request SEPARATELY with its own handler
+        // to isolate which one crashes and allow partial results.
+        if isIOS26 {
+            // Face detection — separate handler
+            CrashGuard.shared.breadcrumb("Detector", "faceRequest START [CPU-only]")
+            CrashGuard.shared.flushToDisk()
+            let faceHandler = VNImageRequestHandler(ciImage: ciImage, options: [:])
+            do {
+                try faceHandler.perform([faceRequest])
+                CrashGuard.shared.breadcrumb("Detector", "faceRequest OK faces=\(faceRequest.results?.count ?? 0)")
+            } catch {
+                CrashGuard.shared.breadcrumb("Detector", "faceRequest FAILED: \(error.localizedDescription)")
+                await LogStore.shared.log(.error, "Detector", "Face detection failed: \(error.localizedDescription)")
+            }
 
-        try handler.perform(requests)
+            // YOLO body detection — separate handler
+            if let req = bodyRequest {
+                CrashGuard.shared.breadcrumb("Detector", "yoloRequest START [CPU-only]")
+                CrashGuard.shared.flushToDisk()
+                let yoloHandler = VNImageRequestHandler(ciImage: ciImage, options: [:])
+                do {
+                    try yoloHandler.perform([req])
+                    CrashGuard.shared.breadcrumb("Detector", "yoloRequest OK")
+                } catch {
+                    CrashGuard.shared.breadcrumb("Detector", "yoloRequest FAILED: \(error.localizedDescription)")
+                    await LogStore.shared.log(.error, "Detector", "YOLO detection failed: \(error.localizedDescription)")
+                    // Continue with face-only results
+                }
+            }
+        } else {
+            // Pre-iOS 26: batch all requests in one perform (faster)
+            let requestNames = requests.map { String(describing: type(of: $0)).replacingOccurrences(of: "VN", with: "") }
+            CrashGuard.shared.breadcrumb("Detector", "perform(\(requestNames.joined(separator: ","))) START")
+            CrashGuard.shared.flushToDisk()
+            try handler.perform(requests)
+        }
 
-        CrashGuard.shared.breadcrumb("Detector", "perform() OK")
+        CrashGuard.shared.breadcrumb("Detector", "detect() requests done")
 
         // Extract YOLO body results after perform (avoids data race from completion handler)
         if let req = bodyRequest,
