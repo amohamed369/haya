@@ -89,10 +89,15 @@ actor PersonDetector {
     /// Detect all people (faces + bodies + instance masks) in the given image.
     func detect(in ciImage: CIImage) async throws -> [DetectedPerson] {
         let handler = VNImageRequestHandler(ciImage: ciImage, options: [:])
+        let iosVersion = ProcessInfo.processInfo.operatingSystemVersion
+        let isIOS26 = iosVersion.majorVersion >= 26
 
         // Set up face detection request
         let faceRequest = VNDetectFaceLandmarksRequest()
         faceRequest.revision = VNDetectFaceLandmarksRequestRevision3
+        // iOS 26.3 beta: ANECompiler SIGSEGV crashes Vision requests that touch ANE.
+        // Force CPU-only to completely bypass ANE. Slightly slower but won't crash.
+        if isIOS26 { faceRequest.usesCPUOnly = true }
 
         // Set up body detection request (YOLO)
         var bodyResults: [(CGRect, Float)] = []
@@ -102,28 +107,24 @@ actor PersonDetector {
         if let model = yoloModel {
             let req = VNCoreMLRequest(model: model)
             req.imageCropAndScaleOption = .scaleFill
+            // Force CPU-only on iOS 26 — Vision overrides the model's .cpuAndGPU
+            // compute units and still routes through ANE, causing SIGSEGV.
+            if isIOS26 { req.usesCPUOnly = true }
             requests.append(req)
             bodyRequest = req
         }
 
         // Instance mask request (iOS 17+) — DISABLED on iOS 26.x beta.
-        // VNGeneratePersonInstanceMaskRequest uses ANE internally and triggers
-        // the same SIGSEGV in ANECompiler that affects CoreML models.
-        // Unlike MLModelConfiguration, Vision requests have no computeUnits override.
-        // The pipeline falls back to YOLO bounding boxes + face-anchored estimates.
         var maskRequest: VNRequest?
-        if #available(iOS 17.0, *) {
-            let iosVersion = ProcessInfo.processInfo.operatingSystemVersion
-            let isIOS26Beta = iosVersion.majorVersion >= 26
-            if !isIOS26Beta {
-                let req = VNGeneratePersonInstanceMaskRequest()
-                requests.append(req)
-                maskRequest = req
-            }
+        if #available(iOS 17.0, *), !isIOS26 {
+            let req = VNGeneratePersonInstanceMaskRequest()
+            requests.append(req)
+            maskRequest = req
         }
 
         let requestNames = requests.map { String(describing: type(of: $0)).replacingOccurrences(of: "VN", with: "") }
-        CrashGuard.shared.breadcrumb("Detector", "perform(\(requestNames.joined(separator: ","))) START")
+        let cpuOnly = isIOS26 ? " [CPU-only]" : ""
+        CrashGuard.shared.breadcrumb("Detector", "perform(\(requestNames.joined(separator: ",")))\(cpuOnly) START")
         CrashGuard.shared.flushToDisk()
 
         try handler.perform(requests)

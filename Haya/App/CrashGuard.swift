@@ -130,8 +130,9 @@ final class CrashGuard: NSObject, MXMetricManagerSubscriber {
                 defaults.set(true, forKey: kSafeMode)
                 logger.error("Safe mode ACTIVATED after \(newCount) consecutive crashes")
             }
-        } else {
-            // Clean launch — reset crash counter
+        } else if !defaults.bool(forKey: kSafeMode) {
+            // Clean launch AND not in safe mode — reset crash counter.
+            // Don't reset if safe mode is active (preserve count for diagnostics).
             defaults.set(0, forKey: kConsecutiveCrashes)
         }
 
