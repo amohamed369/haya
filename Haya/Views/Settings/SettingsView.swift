@@ -412,13 +412,37 @@ struct SettingsView: View {
             VStack(spacing: Haya.Spacing.sm) {
                 let ios = ProcessInfo.processInfo.operatingSystemVersion
                 debugRow("iOS", value: "\(ios.majorVersion).\(ios.minorVersion).\(ios.patchVersion)")
+                debugRow("Detection", value: ios.majorVersion >= 26 ? "Face + Direct YOLO (iOS 26)" : "Full (Vision)")
                 debugRow("Pipeline", value: pipeline.loadingStatus)
                 debugRow("VLM Status", value: vlmStatusText)
                 debugRow("People Enrolled", value: "\(enrollments.count)")
-                debugRow("Photos Scanned", value: "\(pipeline.scanProgress.processed)")
+                debugRow("Photos Scanned", value: "\(pipeline.scanProgress.processed)/\(pipeline.scanProgress.total)")
+                debugRow("Hidden", value: "\(pipeline.scanProgress.hidden)")
+                debugRow("Memory", value: "\(CrashGuard.availableMemoryMB) MB free")
                 debugRow("Disk Free", value: VLMService.availableDiskSpace)
                 debugRow("Crash Count", value: "\(CrashGuard.shared.consecutiveCrashes)")
             }
+
+            // Always-on "Copy Diagnostics" button
+            Button {
+                UIPasteboard.general.string = CrashGuard.shared.diagnosticSummary()
+                    + "\n\n--- Current breadcrumbs ---\n"
+                    + CrashGuard.shared.currentBreadcrumbs.joined(separator: "\n")
+            } label: {
+                HStack {
+                    Image(systemName: "doc.on.doc")
+                    Text("Copy Full Diagnostics")
+                }
+                .font(HayaFont.caption)
+                .foregroundStyle(Haya.Colors.textSage)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: Haya.Radius.sm)
+                        .strokeBorder(Haya.Colors.glassBorder, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
         }
         .glassCard()
     }

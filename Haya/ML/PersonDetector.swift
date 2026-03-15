@@ -45,8 +45,16 @@ struct DetectedPerson: Identifiable, @unchecked Sendable {
 }
 
 /// Detects people in images using Apple Vision (faces) + YOLO11n (bodies) + instance masks (iOS 17+).
+/// On iOS 26.3 beta, uses direct MLModel.prediction() for YOLO (Vision framework's ANE path is broken).
 actor PersonDetector {
-    private var yoloModel: VNCoreMLModel?
+    // Pre-iOS 26: Vision-wrapped model
+    private var yoloVisionModel: VNCoreMLModel?
+    // iOS 26+: Direct MLModel for YOLO (bypasses Vision's broken ANE path)
+    private var yoloDirectModel: MLModel?
+    private var yoloOutputName: String?
+
+    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+    private let isIOS26 = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
 
     // Instance mask state — kept alive for generating masked crops after detection.
     private var lastMaskObservation: VNInstanceMaskObservation?
@@ -55,21 +63,30 @@ actor PersonDetector {
     func loadModels() async throws {
         let config = MLModelConfiguration()
         config.computeUnits = .cpuAndGPU // ANE compiler crashes on iOS 26.3 beta
-        CrashGuard.shared.breadcrumb("Detector", "loadModels() START computeUnits=cpuAndGPU")
+        CrashGuard.shared.breadcrumb("Detector", "loadModels() START cpuAndGPU iOS26=\(isIOS26)")
         CrashGuard.shared.flushToDisk()
         do {
             let url = try Self.modelURL(name: "YOLO11n")
             CrashGuard.shared.breadcrumb("Detector", "YOLO11n URL=\(url.lastPathComponent)")
             let yolo = try MLModel(contentsOf: url, configuration: config)
             CrashGuard.shared.breadcrumb("Detector", "YOLO11n MLModel OK")
-            yoloModel = try VNCoreMLModel(for: yolo)
-            CrashGuard.shared.breadcrumb("Detector", "YOLO11n VNCoreMLModel OK")
-            await LogStore.shared.log(.info, "Detector", "YOLO11n loaded")
+
+            if isIOS26 {
+                // iOS 26: store raw MLModel for direct prediction (bypass Vision)
+                yoloDirectModel = yolo
+                // Discover output tensor name (varies per export: var_914, var_860, etc.)
+                yoloOutputName = yolo.modelDescription.outputDescriptionsByName.keys.first
+                CrashGuard.shared.breadcrumb("Detector", "YOLO11n direct mode, output=\(yoloOutputName ?? "nil")")
+            } else {
+                // Pre-iOS 26: wrap in VNCoreMLModel for Vision pipeline
+                yoloVisionModel = try VNCoreMLModel(for: yolo)
+                CrashGuard.shared.breadcrumb("Detector", "YOLO11n VNCoreMLModel OK")
+            }
+            await LogStore.shared.log(.info, "Detector", "YOLO11n loaded (\(isIOS26 ? "direct" : "vision"))")
         } catch {
             CrashGuard.shared.breadcrumb("Detector", "YOLO11n FAILED: \(error.localizedDescription)")
             await LogStore.shared.log(.error, "Detector", "YOLO11n failed: \(error.localizedDescription)")
             logger.error("YOLO11n failed: \(error)")
-            // Don't rethrow — face-only detection still works without YOLO
         }
     }
 
@@ -107,9 +124,11 @@ actor PersonDetector {
         var maskRequest: VNRequest?
 
         if isIOS26 {
-            // Face rectangles only — the one Vision request that works on iOS 26 beta
+            // === iOS 26 safe path: VNDetectFaceRectanglesRequest + direct YOLO ===
+
+            // 1. Face detection via Vision (the one safe request)
             let faceRequest = VNDetectFaceRectanglesRequest()
-            CrashGuard.shared.breadcrumb("Detector", "faceRectangles START (iOS 26 safe mode)")
+            CrashGuard.shared.breadcrumb("Detector", "faceRectangles START")
             CrashGuard.shared.flushToDisk()
 
             do {
@@ -119,13 +138,25 @@ actor PersonDetector {
                 CrashGuard.shared.breadcrumb("Detector", "faceRectangles FAILED: \(error.localizedDescription)")
                 await LogStore.shared.log(.error, "Detector", "Face detection failed: \(error.localizedDescription)")
             }
-
-            // Parse face results from rectangles (no landmarks, but we only need bounding boxes)
             let faceResults = parseFaceRectangleResults(faceRequest)
-            CrashGuard.shared.breadcrumb("Detector", "detect() done faces=\(faceResults.count) (face-only, no YOLO)")
 
-            // No YOLO, no masks — face-only with body estimates
-            return mergeDetections(faces: faceResults, bodies: [], maskBoxes: [])
+            // 2. YOLO body detection via direct MLModel.prediction() (bypasses Vision's broken ANE)
+            var bodyResults: [(CGRect, Float)] = []
+            if let yolo = yoloDirectModel, let outputName = yoloOutputName {
+                CrashGuard.shared.breadcrumb("Detector", "YOLO direct predict START")
+                CrashGuard.shared.flushToDisk()
+                do {
+                    let bodies = try directYOLODetect(ciImage: ciImage, model: yolo, outputName: outputName)
+                    bodyResults = bodies
+                    CrashGuard.shared.breadcrumb("Detector", "YOLO direct OK bodies=\(bodies.count)")
+                } catch {
+                    CrashGuard.shared.breadcrumb("Detector", "YOLO direct FAILED: \(error.localizedDescription)")
+                    await LogStore.shared.log(.error, "Detector", "YOLO direct failed: \(error.localizedDescription)")
+                }
+            }
+
+            CrashGuard.shared.breadcrumb("Detector", "detect() done faces=\(faceResults.count) bodies=\(bodyResults.count)")
+            return mergeDetections(faces: faceResults, bodies: bodyResults, maskBoxes: [])
         }
 
         // Pre-iOS 26: full detection pipeline
@@ -134,7 +165,7 @@ actor PersonDetector {
 
         var requests: [VNRequest] = [faceRequest]
 
-        if let model = yoloModel {
+        if let model = yoloVisionModel {
             let req = VNCoreMLRequest(model: model)
             req.imageCropAndScaleOption = .scaleFill
             requests.append(req)
@@ -441,6 +472,112 @@ actor PersonDetector {
         let minArea = min(a.width * a.height, b.width * b.height)
         guard minArea > 0 else { return 0 }
         return (intersection.width * intersection.height) / minArea
+    }
+
+    // MARK: - Direct YOLO Inference (iOS 26 — bypasses Vision framework)
+
+    /// Run YOLO11n directly via MLModel.prediction(), bypassing VNCoreMLRequest.
+    /// Returns person bounding boxes in normalized top-left coordinates.
+    private func directYOLODetect(
+        ciImage: CIImage, model: MLModel, outputName: String,
+        confThreshold: Float = 0.25, iouThreshold: Float = 0.45
+    ) throws -> [(CGRect, Float)] {
+        // 1. Create 640×640 BGRA pixel buffer
+        guard let pb = createYOLOPixelBuffer(from: ciImage) else {
+            throw NSError(domain: "com.haya.ml", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create YOLO pixel buffer"])
+        }
+
+        // 2. Run prediction
+        let input = try MLDictionaryFeatureProvider(dictionary: ["image": MLFeatureValue(pixelBuffer: pb)])
+        let output = try model.prediction(from: input)
+        guard let raw = output.featureValue(for: outputName)?.multiArrayValue else {
+            throw NSError(domain: "com.haya.ml", code: -1, userInfo: [NSLocalizedDescriptionKey: "YOLO output missing: \(outputName)"])
+        }
+
+        // 3. Post-process: decode boxes, filter person class, NMS
+        return decodeYOLOOutput(raw, confThreshold: confThreshold, iouThreshold: iouThreshold)
+    }
+
+    /// Create a 640×640 BGRA pixel buffer from CIImage (for direct YOLO inference).
+    private func createYOLOPixelBuffer(from ciImage: CIImage) -> CVPixelBuffer? {
+        let size = 640
+        var pixelBuffer: CVPixelBuffer?
+        let attrs: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
+        ]
+        let status = CVPixelBufferCreate(kCFAllocatorDefault, size, size,
+                                         kCVPixelFormatType_32BGRA, attrs as CFDictionary, &pixelBuffer)
+        guard status == kCVReturnSuccess, let pb = pixelBuffer else { return nil }
+
+        // Scale image to fill 640×640
+        let scaleX = CGFloat(size) / ciImage.extent.width
+        let scaleY = CGFloat(size) / ciImage.extent.height
+        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+        ciContext.render(scaled, to: pb)
+        return pb
+    }
+
+    /// Decode YOLO11n output tensor [1, 84, 8400] → person bounding boxes.
+    /// Output layout per anchor j: [cx, cy, w, h, class0_score, ..., class79_score]
+    /// Person class = 0 (COCO). Coordinates normalized to [0, 1].
+    private func decodeYOLOOutput(
+        _ output: MLMultiArray,
+        confThreshold: Float, iouThreshold: Float
+    ) -> [(CGRect, Float)] {
+        let numAnchors = 8400
+        let channelStride = numAnchors  // output is [1, 84, 8400], stride[1]=8400
+
+        let ptr = UnsafeMutablePointer<Float32>(OpaquePointer(output.dataPointer))
+
+        var boxes = [CGRect]()
+        var scores = [Float]()
+
+        for j in 0..<numAnchors {
+            // Person class (index 0) score at channel 4
+            let personScore = ptr[4 * channelStride + j]
+            guard personScore >= confThreshold else { continue }
+
+            // Box: cx, cy, w, h (in 640px space)
+            let cx = CGFloat(ptr[0 * channelStride + j]) / 640.0
+            let cy = CGFloat(ptr[1 * channelStride + j]) / 640.0
+            let bw = CGFloat(ptr[2 * channelStride + j]) / 640.0
+            let bh = CGFloat(ptr[3 * channelStride + j]) / 640.0
+
+            let rect = CGRect(x: cx - bw / 2, y: cy - bh / 2, width: bw, height: bh)
+            boxes.append(rect)
+            scores.append(personScore)
+        }
+
+        // NMS
+        let kept = yoloNMS(boxes: boxes, scores: scores, threshold: iouThreshold)
+        return kept.map { i in
+            // Convert to top-left origin (YOLO output is already top-left)
+            (boxes[i], scores[i])
+        }
+    }
+
+    /// Non-maximum suppression for YOLO detections.
+    private func yoloNMS(boxes: [CGRect], scores: [Float], threshold: Float) -> [Int] {
+        let sorted = scores.enumerated().sorted { $0.element > $1.element }.map { $0.offset }
+        var selected = [Int]()
+        var active = [Bool](repeating: true, count: boxes.count)
+
+        for i in sorted {
+            guard active[i] else { continue }
+            selected.append(i)
+            for j in sorted where active[j] && j != i {
+                let inter = boxes[i].intersection(boxes[j])
+                guard !inter.isNull else { continue }
+                let interArea = inter.width * inter.height
+                let unionArea = boxes[i].width * boxes[i].height + boxes[j].width * boxes[j].height - interArea
+                if unionArea > 0 && Float(interArea / unionArea) > threshold {
+                    active[j] = false
+                }
+            }
+        }
+        return selected
     }
 
     // MARK: - Model URL

@@ -139,7 +139,7 @@ struct PhotoGridView: View {
     private func loadPhotos() {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.fetchLimit = 200
+        // No fetch limit — show all photos (scan processes all, grid should match)
         let result = PHAsset.fetchAssets(with: .image, options: options)
         var loaded: [PHAsset] = []
         result.enumerateObjects { asset, _, _ in
