@@ -92,73 +92,65 @@ actor PersonDetector {
         let iosVersion = ProcessInfo.processInfo.operatingSystemVersion
         let isIOS26 = iosVersion.majorVersion >= 26
 
-        // Set up face detection request
+        // iOS 26.3 beta: Vision framework is severely broken:
+        //   - VNDetectFaceLandmarksRequest + usesCPUOnly → missing _nonane weights (FAILS)
+        //   - VNDetectFaceLandmarksRequest without usesCPUOnly → ANE SIGSEGV (CRASHES)
+        //   - VNCoreMLRequest + usesCPUOnly → SIGABRT (CRASHES)
+        //   - VNCoreMLRequest without usesCPUOnly → ANE SIGSEGV (CRASHES)
+        //   - VNGeneratePersonInstanceMaskRequest → ANE SIGSEGV (CRASHES)
+        //
+        // Only safe option: VNDetectFaceRectanglesRequest (no heavy neural weights).
+        // Skip YOLO entirely — use face-anchored body estimates instead.
+
+        var bodyResults: [(CGRect, Float)] = []
+        var bodyRequest: VNCoreMLRequest?
+        var maskRequest: VNRequest?
+
+        if isIOS26 {
+            // Face rectangles only — the one Vision request that works on iOS 26 beta
+            let faceRequest = VNDetectFaceRectanglesRequest()
+            CrashGuard.shared.breadcrumb("Detector", "faceRectangles START (iOS 26 safe mode)")
+            CrashGuard.shared.flushToDisk()
+
+            do {
+                try handler.perform([faceRequest])
+                CrashGuard.shared.breadcrumb("Detector", "faceRectangles OK faces=\(faceRequest.results?.count ?? 0)")
+            } catch {
+                CrashGuard.shared.breadcrumb("Detector", "faceRectangles FAILED: \(error.localizedDescription)")
+                await LogStore.shared.log(.error, "Detector", "Face detection failed: \(error.localizedDescription)")
+            }
+
+            // Parse face results from rectangles (no landmarks, but we only need bounding boxes)
+            let faceResults = parseFaceRectangleResults(faceRequest)
+            CrashGuard.shared.breadcrumb("Detector", "detect() done faces=\(faceResults.count) (face-only, no YOLO)")
+
+            // No YOLO, no masks — face-only with body estimates
+            return mergeDetections(faces: faceResults, bodies: [], maskBoxes: [])
+        }
+
+        // Pre-iOS 26: full detection pipeline
         let faceRequest = VNDetectFaceLandmarksRequest()
         faceRequest.revision = VNDetectFaceLandmarksRequestRevision3
-        // iOS 26.3 beta: ANECompiler SIGSEGV crashes Vision requests that touch ANE.
-        // Force CPU-only to completely bypass ANE. Slightly slower but won't crash.
-        if isIOS26 { faceRequest.usesCPUOnly = true }
 
-        // Set up body detection request (YOLO)
-        var bodyResults: [(CGRect, Float)] = []
         var requests: [VNRequest] = [faceRequest]
-        var bodyRequest: VNCoreMLRequest?
 
         if let model = yoloModel {
             let req = VNCoreMLRequest(model: model)
             req.imageCropAndScaleOption = .scaleFill
-            // Force CPU-only on iOS 26 — Vision overrides the model's .cpuAndGPU
-            // compute units and still routes through ANE, causing SIGSEGV.
-            if isIOS26 { req.usesCPUOnly = true }
             requests.append(req)
             bodyRequest = req
         }
 
-        // Instance mask request (iOS 17+) — DISABLED on iOS 26.x beta.
-        var maskRequest: VNRequest?
-        if #available(iOS 17.0, *), !isIOS26 {
+        if #available(iOS 17.0, *) {
             let req = VNGeneratePersonInstanceMaskRequest()
             requests.append(req)
             maskRequest = req
         }
 
-        // On iOS 26 beta, run each request SEPARATELY with its own handler
-        // to isolate which one crashes and allow partial results.
-        if isIOS26 {
-            // Face detection — separate handler
-            CrashGuard.shared.breadcrumb("Detector", "faceRequest START [CPU-only]")
-            CrashGuard.shared.flushToDisk()
-            let faceHandler = VNImageRequestHandler(ciImage: ciImage, options: [:])
-            do {
-                try faceHandler.perform([faceRequest])
-                CrashGuard.shared.breadcrumb("Detector", "faceRequest OK faces=\(faceRequest.results?.count ?? 0)")
-            } catch {
-                CrashGuard.shared.breadcrumb("Detector", "faceRequest FAILED: \(error.localizedDescription)")
-                await LogStore.shared.log(.error, "Detector", "Face detection failed: \(error.localizedDescription)")
-            }
-
-            // YOLO body detection — separate handler
-            if let req = bodyRequest {
-                CrashGuard.shared.breadcrumb("Detector", "yoloRequest START [CPU-only]")
-                CrashGuard.shared.flushToDisk()
-                let yoloHandler = VNImageRequestHandler(ciImage: ciImage, options: [:])
-                do {
-                    try yoloHandler.perform([req])
-                    CrashGuard.shared.breadcrumb("Detector", "yoloRequest OK")
-                } catch {
-                    CrashGuard.shared.breadcrumb("Detector", "yoloRequest FAILED: \(error.localizedDescription)")
-                    await LogStore.shared.log(.error, "Detector", "YOLO detection failed: \(error.localizedDescription)")
-                    // Continue with face-only results
-                }
-            }
-        } else {
-            // Pre-iOS 26: batch all requests in one perform (faster)
-            let requestNames = requests.map { String(describing: type(of: $0)).replacingOccurrences(of: "VN", with: "") }
-            CrashGuard.shared.breadcrumb("Detector", "perform(\(requestNames.joined(separator: ","))) START")
-            CrashGuard.shared.flushToDisk()
-            try handler.perform(requests)
-        }
-
+        let requestNames = requests.map { String(describing: type(of: $0)).replacingOccurrences(of: "VN", with: "") }
+        CrashGuard.shared.breadcrumb("Detector", "perform(\(requestNames.joined(separator: ","))) START")
+        CrashGuard.shared.flushToDisk()
+        try handler.perform(requests)
         CrashGuard.shared.breadcrumb("Detector", "detect() requests done")
 
         // Extract YOLO body results after perform (avoids data race from completion handler)
@@ -243,6 +235,15 @@ actor PersonDetector {
     // MARK: - Face Result Parsing
 
     private func parseFaceResults(_ request: VNDetectFaceLandmarksRequest) -> [(CGRect, VNFaceObservation)] {
+        guard let results = request.results else { return [] }
+        return results.compactMap { face in
+            let flipped = VisionCoordinates.flipToTopLeft(face.boundingBox)
+            return (flipped, face)
+        }
+    }
+
+    /// Parse face rectangles (simpler request, no landmarks — iOS 26 safe fallback).
+    private func parseFaceRectangleResults(_ request: VNDetectFaceRectanglesRequest) -> [(CGRect, VNFaceObservation)] {
         guard let results = request.results else { return [] }
         return results.compactMap { face in
             let flipped = VisionCoordinates.flipToTopLeft(face.boundingBox)
