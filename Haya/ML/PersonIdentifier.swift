@@ -38,8 +38,9 @@ actor PersonIdentifier {
 
     func loadModels() async throws {
         let config = MLModelConfiguration()
-        config.computeUnits = .cpuAndGPU // ANE compiler crashes on iOS 26.3 beta
-        CrashGuard.shared.breadcrumb("Identifier", "loadModels() START")
+        let isIOS26 = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
+        config.computeUnits = isIOS26 ? .cpuOnly : .cpuAndGPU
+        CrashGuard.shared.breadcrumb("Identifier", "loadModels() START \(isIOS26 ? "cpuOnly" : "cpuAndGPU")")
         CrashGuard.shared.flushToDisk()
 
         // Load each model independently — one failure shouldn't block the other

@@ -62,8 +62,11 @@ actor PersonDetector {
 
     func loadModels() async throws {
         let config = MLModelConfiguration()
-        config.computeUnits = .cpuAndGPU // ANE compiler crashes on iOS 26.3 beta
-        CrashGuard.shared.breadcrumb("Detector", "loadModels() START cpuAndGPU iOS26=\(isIOS26)")
+        // iOS 26.3 beta: ANE crashes, GPU path also crashes for some models.
+        // Use cpuOnly on iOS 26 to completely avoid any accelerator bugs.
+        config.computeUnits = isIOS26 ? .cpuOnly : .cpuAndGPU
+        let unitsLabel = isIOS26 ? "cpuOnly" : "cpuAndGPU"
+        CrashGuard.shared.breadcrumb("Detector", "loadModels() START \(unitsLabel) iOS26=\(isIOS26)")
         CrashGuard.shared.flushToDisk()
         do {
             let url = try Self.modelURL(name: "YOLO11n")
@@ -71,10 +74,14 @@ actor PersonDetector {
             let yolo = try MLModel(contentsOf: url, configuration: config)
             CrashGuard.shared.breadcrumb("Detector", "YOLO11n MLModel OK")
 
+            // Log model I/O for debugging
+            let inputs = yolo.modelDescription.inputDescriptionsByName.keys.joined(separator: ",")
+            let outputs = yolo.modelDescription.outputDescriptionsByName.map { "\($0.key):\($0.value.type.rawValue)" }.joined(separator: ",")
+            CrashGuard.shared.breadcrumb("Detector", "YOLO11n inputs=[\(inputs)] outputs=[\(outputs)]")
+
             if isIOS26 {
                 // iOS 26: store raw MLModel for direct prediction (bypass Vision)
                 yoloDirectModel = yolo
-                // Discover output tensor name (varies per export: var_914, var_860, etc.)
                 yoloOutputName = yolo.modelDescription.outputDescriptionsByName.keys.first
                 CrashGuard.shared.breadcrumb("Detector", "YOLO11n direct mode, output=\(yoloOutputName ?? "nil")")
             } else {
@@ -82,7 +89,7 @@ actor PersonDetector {
                 yoloVisionModel = try VNCoreMLModel(for: yolo)
                 CrashGuard.shared.breadcrumb("Detector", "YOLO11n VNCoreMLModel OK")
             }
-            await LogStore.shared.log(.info, "Detector", "YOLO11n loaded (\(isIOS26 ? "direct" : "vision"))")
+            await LogStore.shared.log(.info, "Detector", "YOLO11n loaded (\(isIOS26 ? "direct/\(unitsLabel)" : "vision"))")
         } catch {
             CrashGuard.shared.breadcrumb("Detector", "YOLO11n FAILED: \(error.localizedDescription)")
             await LogStore.shared.log(.error, "Detector", "YOLO11n failed: \(error.localizedDescription)")
@@ -152,6 +159,9 @@ actor PersonDetector {
                 } catch {
                     CrashGuard.shared.breadcrumb("Detector", "YOLO direct FAILED: \(error.localizedDescription)")
                     await LogStore.shared.log(.error, "Detector", "YOLO direct failed: \(error.localizedDescription)")
+                    // If YOLO consistently fails, disable it for this session
+                    yoloDirectModel = nil
+                    await LogStore.shared.log(.warning, "Detector", "YOLO disabled for this session — using face-only detection")
                 }
             }
 
